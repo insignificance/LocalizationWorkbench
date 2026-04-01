@@ -1,0 +1,79 @@
+{
+  "" : {
+    "diagnostics" : "/Users/renogy_yx/Desktop/localization/XcodeProject/LocalizationWorkbenchXcode/build/Build/Intermediates.noindex/LocalizationWorkbench.build/Debug/LocalizationWorkbench.build/Objects-normal/x86_64/LocalizationWorkbench-primary.dia",
+    "emit-module-dependencies" : "/Users/renogy_yx/Desktop/localization/XcodeProject/LocalizationWorkbenchXcode/build/Build/Intermediates.noindex/LocalizationWorkbench.build/Debug/LocalizationWorkbench.build/Objects-normal/x86_64/LocalizationWorkbench-primary-emit-module.d",
+    "emit-module-diagnostics" : "/Users/renogy_yx/Desktop/localization/XcodeProject/LocalizationWorkbenchXcode/build/Build/Intermediates.noindex/LocalizationWorkbench.build/Debug/LocalizationWorkbench.build/Objects-normal/x86_64/LocalizationWorkbench-primary-emit-module.dia",
+    "pch" : "/Users/renogy_yx/Desktop/localization/XcodeProject/LocalizationWorkbenchXcode/build/Build/Intermediates.noindex/LocalizationWorkbench.build/Debug/LocalizationWorkbench.build/Objects-normal/x86_64/LocalizationWorkbench-primary-Bridging-header.pch",
+    "swift-dependencies" : "/Users/renogy_yx/Desktop/localization/XcodeProject/LocalizationWorkbenchXcode/build/Build/Intermediates.noindex/LocalizationWorkbench.build/Debug/LocalizationWorkbench.build/Objects-normal/x86_64/LocalizationWorkbench-primary.swiftdeps"
+  },
+  "/Users/renogy_yx/Desktop/localization/XcodeProject/LocalizationWorkbenchXcode/LocalizationWorkbench/AppSupport.swift" : {
+    "const-values" : "/Users/renogy_yx/Desktop/localization/XcodeProject/LocalizationWorkbenchXcode/build/Build/Intermediates.noindex/LocalizationWorkbench.build/Debug/LocalizationWorkbench.build/Objects-normal/x86_64/AppSupport.swiftconstvalues",
+    "dependencies" : "/Users/renogy_yx/Desktop/localization/XcodeProject/LocalizationWorkbenchXcode/build/Build/Intermediates.noindex/LocalizationWorkbench.build/Debug/LocalizationWorkbench.build/Objects-normal/x86_64/AppSupport.d",
+    "diagnostics" : "/Users/renogy_yx/Desktop/localization/XcodeProject/LocalizationWorkbenchXcode/build/Build/Intermediates.noindex/LocalizationWorkbench.build/Debug/LocalizationWorkbench.build/Objects-normal/x86_64/AppSupport.dia",
+    "index-unit-output-path" : "/LocalizationWorkbench.build/Debug/LocalizationWorkbench.build/Objects-normal/x86_64/AppSupport.o",
+    "llvm-bc" : "/Users/renogy_yx/Desktop/localization/XcodeProject/LocalizationWorkbenchXcode/build/Build/Intermediates.noindex/LocalizationWorkbench.build/Debug/LocalizationWorkbench.build/Objects-normal/x86_64/AppSupport.bc",
+    "object" : "/Users/renogy_yx/Desktop/localization/XcodeProject/LocalizationWorkbenchXcode/build/Build/Intermediates.noindex/LocalizationWorkbench.build/Debug/LocalizationWorkbench.build/Objects-normal/x86_64/AppSupport.o",
+    "swift-dependencies" : "/Users/renogy_yx/Desktop/localization/XcodeProject/LocalizationWorkbenchXcode/build/Build/Intermediates.noindex/LocalizationWorkbench.build/Debug/LocalizationWorkbench.build/Objects-normal/x86_64/AppSupport.swiftdeps",
+    "swiftmodule" : "/Users/renogy_yx/Desktop/localization/XcodeProject/LocalizationWorkbenchXcode/build/Build/Intermediates.noindex/LocalizationWorkbench.build/Debug/LocalizationWorkbench.build/Objects-normal/x86_64/AppSupport~partial.swiftmodule"
+  },
+  "/Users/renogy_yx/Desktop/localization/XcodeProject/LocalizationWorkbenchXcode/LocalizationWorkbench/ContentView.swift" : {
+    "const-values" : "/Users/renogy_yx/Desktop/localization/XcodeProject/LocalizationWorkbenchXcode/build/Build/Intermediates.noindex/LocalizationWorkbench.build/Debug/LocalizationWorkbench.build/Objects-normal/x86_64/ContentView.swiftconstvalues",
+    "dependencies" : "/Users/renogy_yx/Desktop/localization/XcodeProject/LocalizationWorkbenchXcode/build/Build/Intermediates.noindex/LocalizationWorkbench.build/Debug/LocalizationWorkbench.build/Objects-normal/x86_64/ContentView.d",
+    "diagnostics" : "/Users/renogy_yx/Desktop/localization/XcodeProject/LocalizationWorkbenchXcode/build/Build/Intermediates.noindex/LocalizationWorkbench.build/Debug/LocalizationWorkbench.build/Objects-normal/x86_64/ContentView.dia",
+    "index-unit-output-path" : "/LocalizationWorkbench.build/Debug/LocalizationWorkbench.build/Objects-normal/x86_64/ContentView.o",
+    "llvm-bc" : "/Users/renogy_yx/Desktop/localization/XcodeProject/LocalizationWorkbenchXcode/build/Build/Intermediates.noindex/LocalizationWorkbench.build/Debug/LocalizationWorkbench.build/Objects-normal/x86_64/ContentView.bc",
+    "object" : "/Users/renogy_yx/Desktop/localization/XcodeProject/LocalizationWorkbenchXcode/build/Build/Intermediates.noindex/LocalizationWorkbench.build/Debug/LocalizationWorkbench.build/Objects-normal/x86_64/ContentView.o",
+    "swift-dependencies" : "/Users/renogy_yx/Desktop/localization/XcodeProject/LocalizationWorkbenchXcode/build/Build/Intermediates.noindex/LocalizationWorkbench.build/Debug/LocalizationWorkbench.build/Objects-normal/x86_64/ContentView.swiftdeps",
+    "swiftmodule" : "/Users/renogy_yx/Desktop/localization/XcodeProject/LocalizationWorkbenchXcode/build/Build/Intermediates.noindex/LocalizationWorkbench.build/Debug/LocalizationWorkbench.build/Objects-normal/x86_64/ContentView~partial.swiftmodule"
+  },
+  "/Users/renogy_yx/Desktop/localization/XcodeProject/LocalizationWorkbenchXcode/LocalizationWorkbench/LocalizationWorkbenchApp.swift" : {
+    "const-values" : "/Users/renogy_yx/Desktop/localization/XcodeProject/LocalizationWorkbenchXcode/build/Build/Intermediates.noindex/LocalizationWorkbench.build/Debug/LocalizationWorkbench.build/Objects-normal/x86_64/LocalizationWorkbenchApp.swiftconstvalues",
+    "dependencies" : "/Users/renogy_yx/Desktop/localization/XcodeProject/LocalizationWorkbenchXcode/build/Build/Intermediates.noindex/LocalizationWorkbench.build/Debug/LocalizationWorkbench.build/Objects-normal/x86_64/LocalizationWorkbenchApp.d",
+    "diagnostics" : "/Users/renogy_yx/Desktop/localization/XcodeProject/LocalizationWorkbenchXcode/build/Build/Intermediates.noindex/LocalizationWorkbench.build/Debug/LocalizationWorkbench.build/Objects-normal/x86_64/LocalizationWorkbenchApp.dia",
+    "index-unit-output-path" : "/LocalizationWorkbench.build/Debug/LocalizationWorkbench.build/Objects-normal/x86_64/LocalizationWorkbenchApp.o",
+    "llvm-bc" : "/Users/renogy_yx/Desktop/localization/XcodeProject/LocalizationWorkbenchXcode/build/Build/Intermediates.noindex/LocalizationWorkbench.build/Debug/LocalizationWorkbench.build/Objects-normal/x86_64/LocalizationWorkbenchApp.bc",
+    "object" : "/Users/renogy_yx/Desktop/localization/XcodeProject/LocalizationWorkbenchXcode/build/Build/Intermediates.noindex/LocalizationWorkbench.build/Debug/LocalizationWorkbench.build/Objects-normal/x86_64/LocalizationWorkbenchApp.o",
+    "swift-dependencies" : "/Users/renogy_yx/Desktop/localization/XcodeProject/LocalizationWorkbenchXcode/build/Build/Intermediates.noindex/LocalizationWorkbench.build/Debug/LocalizationWorkbench.build/Objects-normal/x86_64/LocalizationWorkbenchApp.swiftdeps",
+    "swiftmodule" : "/Users/renogy_yx/Desktop/localization/XcodeProject/LocalizationWorkbenchXcode/build/Build/Intermediates.noindex/LocalizationWorkbench.build/Debug/LocalizationWorkbench.build/Objects-normal/x86_64/LocalizationWorkbenchApp~partial.swiftmodule"
+  },
+  "/Users/renogy_yx/Desktop/localization/XcodeProject/LocalizationWorkbenchXcode/LocalizationWorkbench/SharedViews.swift" : {
+    "const-values" : "/Users/renogy_yx/Desktop/localization/XcodeProject/LocalizationWorkbenchXcode/build/Build/Intermediates.noindex/LocalizationWorkbench.build/Debug/LocalizationWorkbench.build/Objects-normal/x86_64/SharedViews.swiftconstvalues",
+    "dependencies" : "/Users/renogy_yx/Desktop/localization/XcodeProject/LocalizationWorkbenchXcode/build/Build/Intermediates.noindex/LocalizationWorkbench.build/Debug/LocalizationWorkbench.build/Objects-normal/x86_64/SharedViews.d",
+    "diagnostics" : "/Users/renogy_yx/Desktop/localization/XcodeProject/LocalizationWorkbenchXcode/build/Build/Intermediates.noindex/LocalizationWorkbench.build/Debug/LocalizationWorkbench.build/Objects-normal/x86_64/SharedViews.dia",
+    "index-unit-output-path" : "/LocalizationWorkbench.build/Debug/LocalizationWorkbench.build/Objects-normal/x86_64/SharedViews.o",
+    "llvm-bc" : "/Users/renogy_yx/Desktop/localization/XcodeProject/LocalizationWorkbenchXcode/build/Build/Intermediates.noindex/LocalizationWorkbench.build/Debug/LocalizationWorkbench.build/Objects-normal/x86_64/SharedViews.bc",
+    "object" : "/Users/renogy_yx/Desktop/localization/XcodeProject/LocalizationWorkbenchXcode/build/Build/Intermediates.noindex/LocalizationWorkbench.build/Debug/LocalizationWorkbench.build/Objects-normal/x86_64/SharedViews.o",
+    "swift-dependencies" : "/Users/renogy_yx/Desktop/localization/XcodeProject/LocalizationWorkbenchXcode/build/Build/Intermediates.noindex/LocalizationWorkbench.build/Debug/LocalizationWorkbench.build/Objects-normal/x86_64/SharedViews.swiftdeps",
+    "swiftmodule" : "/Users/renogy_yx/Desktop/localization/XcodeProject/LocalizationWorkbenchXcode/build/Build/Intermediates.noindex/LocalizationWorkbench.build/Debug/LocalizationWorkbench.build/Objects-normal/x86_64/SharedViews~partial.swiftmodule"
+  },
+  "/Users/renogy_yx/Desktop/localization/XcodeProject/LocalizationWorkbenchXcode/LocalizationWorkbench/Workflow.swift" : {
+    "const-values" : "/Users/renogy_yx/Desktop/localization/XcodeProject/LocalizationWorkbenchXcode/build/Build/Intermediates.noindex/LocalizationWorkbench.build/Debug/LocalizationWorkbench.build/Objects-normal/x86_64/Workflow.swiftconstvalues",
+    "dependencies" : "/Users/renogy_yx/Desktop/localization/XcodeProject/LocalizationWorkbenchXcode/build/Build/Intermediates.noindex/LocalizationWorkbench.build/Debug/LocalizationWorkbench.build/Objects-normal/x86_64/Workflow.d",
+    "diagnostics" : "/Users/renogy_yx/Desktop/localization/XcodeProject/LocalizationWorkbenchXcode/build/Build/Intermediates.noindex/LocalizationWorkbench.build/Debug/LocalizationWorkbench.build/Objects-normal/x86_64/Workflow.dia",
+    "index-unit-output-path" : "/LocalizationWorkbench.build/Debug/LocalizationWorkbench.build/Objects-normal/x86_64/Workflow.o",
+    "llvm-bc" : "/Users/renogy_yx/Desktop/localization/XcodeProject/LocalizationWorkbenchXcode/build/Build/Intermediates.noindex/LocalizationWorkbench.build/Debug/LocalizationWorkbench.build/Objects-normal/x86_64/Workflow.bc",
+    "object" : "/Users/renogy_yx/Desktop/localization/XcodeProject/LocalizationWorkbenchXcode/build/Build/Intermediates.noindex/LocalizationWorkbench.build/Debug/LocalizationWorkbench.build/Objects-normal/x86_64/Workflow.o",
+    "swift-dependencies" : "/Users/renogy_yx/Desktop/localization/XcodeProject/LocalizationWorkbenchXcode/build/Build/Intermediates.noindex/LocalizationWorkbench.build/Debug/LocalizationWorkbench.build/Objects-normal/x86_64/Workflow.swiftdeps",
+    "swiftmodule" : "/Users/renogy_yx/Desktop/localization/XcodeProject/LocalizationWorkbenchXcode/build/Build/Intermediates.noindex/LocalizationWorkbench.build/Debug/LocalizationWorkbench.build/Objects-normal/x86_64/Workflow~partial.swiftmodule"
+  },
+  "/Users/renogy_yx/Desktop/localization/XcodeProject/LocalizationWorkbenchXcode/LocalizationWorkbench/WorkflowViews.swift" : {
+    "const-values" : "/Users/renogy_yx/Desktop/localization/XcodeProject/LocalizationWorkbenchXcode/build/Build/Intermediates.noindex/LocalizationWorkbench.build/Debug/LocalizationWorkbench.build/Objects-normal/x86_64/WorkflowViews.swiftconstvalues",
+    "dependencies" : "/Users/renogy_yx/Desktop/localization/XcodeProject/LocalizationWorkbenchXcode/build/Build/Intermediates.noindex/LocalizationWorkbench.build/Debug/LocalizationWorkbench.build/Objects-normal/x86_64/WorkflowViews.d",
+    "diagnostics" : "/Users/renogy_yx/Desktop/localization/XcodeProject/LocalizationWorkbenchXcode/build/Build/Intermediates.noindex/LocalizationWorkbench.build/Debug/LocalizationWorkbench.build/Objects-normal/x86_64/WorkflowViews.dia",
+    "index-unit-output-path" : "/LocalizationWorkbench.build/Debug/LocalizationWorkbench.build/Objects-normal/x86_64/WorkflowViews.o",
+    "llvm-bc" : "/Users/renogy_yx/Desktop/localization/XcodeProject/LocalizationWorkbenchXcode/build/Build/Intermediates.noindex/LocalizationWorkbench.build/Debug/LocalizationWorkbench.build/Objects-normal/x86_64/WorkflowViews.bc",
+    "object" : "/Users/renogy_yx/Desktop/localization/XcodeProject/LocalizationWorkbenchXcode/build/Build/Intermediates.noindex/LocalizationWorkbench.build/Debug/LocalizationWorkbench.build/Objects-normal/x86_64/WorkflowViews.o",
+    "swift-dependencies" : "/Users/renogy_yx/Desktop/localization/XcodeProject/LocalizationWorkbenchXcode/build/Build/Intermediates.noindex/LocalizationWorkbench.build/Debug/LocalizationWorkbench.build/Objects-normal/x86_64/WorkflowViews.swiftdeps",
+    "swiftmodule" : "/Users/renogy_yx/Desktop/localization/XcodeProject/LocalizationWorkbenchXcode/build/Build/Intermediates.noindex/LocalizationWorkbench.build/Debug/LocalizationWorkbench.build/Objects-normal/x86_64/WorkflowViews~partial.swiftmodule"
+  },
+  "/Users/renogy_yx/Desktop/localization/XcodeProject/LocalizationWorkbenchXcode/build/Build/Intermediates.noindex/LocalizationWorkbench.build/Debug/LocalizationWorkbench.build/DerivedSources/GeneratedAssetSymbols.swift" : {
+    "const-values" : "/Users/renogy_yx/Desktop/localization/XcodeProject/LocalizationWorkbenchXcode/build/Build/Intermediates.noindex/LocalizationWorkbench.build/Debug/LocalizationWorkbench.build/Objects-normal/x86_64/GeneratedAssetSymbols.swiftconstvalues",
+    "dependencies" : "/Users/renogy_yx/Desktop/localization/XcodeProject/LocalizationWorkbenchXcode/build/Build/Intermediates.noindex/LocalizationWorkbench.build/Debug/LocalizationWorkbench.build/Objects-normal/x86_64/GeneratedAssetSymbols.d",
+    "diagnostics" : "/Users/renogy_yx/Desktop/localization/XcodeProject/LocalizationWorkbenchXcode/build/Build/Intermediates.noindex/LocalizationWorkbench.build/Debug/LocalizationWorkbench.build/Objects-normal/x86_64/GeneratedAssetSymbols.dia",
+    "index-unit-output-path" : "/LocalizationWorkbench.build/Debug/LocalizationWorkbench.build/Objects-normal/x86_64/GeneratedAssetSymbols.o",
+    "llvm-bc" : "/Users/renogy_yx/Desktop/localization/XcodeProject/LocalizationWorkbenchXcode/build/Build/Intermediates.noindex/LocalizationWorkbench.build/Debug/LocalizationWorkbench.build/Objects-normal/x86_64/GeneratedAssetSymbols.bc",
+    "object" : "/Users/renogy_yx/Desktop/localization/XcodeProject/LocalizationWorkbenchXcode/build/Build/Intermediates.noindex/LocalizationWorkbench.build/Debug/LocalizationWorkbench.build/Objects-normal/x86_64/GeneratedAssetSymbols.o",
+    "swift-dependencies" : "/Users/renogy_yx/Desktop/localization/XcodeProject/LocalizationWorkbenchXcode/build/Build/Intermediates.noindex/LocalizationWorkbench.build/Debug/LocalizationWorkbench.build/Objects-normal/x86_64/GeneratedAssetSymbols.swiftdeps",
+    "swiftmodule" : "/Users/renogy_yx/Desktop/localization/XcodeProject/LocalizationWorkbenchXcode/build/Build/Intermediates.noindex/LocalizationWorkbench.build/Debug/LocalizationWorkbench.build/Objects-normal/x86_64/GeneratedAssetSymbols~partial.swiftmodule"
+  }
+}

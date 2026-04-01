@@ -1,0 +1,80 @@
+{
+  "source": "/Users/renogy_yx/Desktop/localization/XcodeProject/LocalizationWorkbenchXcode/LocalizationWorkbench/ContentView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "工作流",
+        "location": {
+          "startingColumn": 21,
+          "startingLine": 34
+        }
+      },
+      {
+        "comment": "",
+        "key": "Localization Workbench",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 159
+        }
+      },
+      {
+        "comment": "",
+        "key": "把散落脚本收成一套可视化本地化工作台。",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 161
+        }
+      },
+      {
+        "comment": "",
+        "key": "SwiftUI App",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 168
+        }
+      },
+      {
+        "comment": "",
+        "key": "Python Toolchain",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 169
+        }
+      },
+      {
+        "comment": "",
+        "key": "macOS",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 170
+        }
+      },
+      {
+        "comment": "",
+        "key": "更换",
+        "location": {
+          "startingColumn": 45,
+          "startingLine": 192
+        }
+      },
+      {
+        "comment": "",
+        "key": "设置",
+        "location": {
+          "startingColumn": 56,
+          "startingLine": 192
+        }
+      },
+      {
+        "comment": "",
+        "key": "项目根目录",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 177
+        }
+      }
+    ]
+  },
+  "version": 1
+}

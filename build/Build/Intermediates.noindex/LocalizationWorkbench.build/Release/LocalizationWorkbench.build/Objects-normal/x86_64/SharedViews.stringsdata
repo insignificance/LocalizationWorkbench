@@ -1,0 +1,176 @@
+{
+  "source": "/Users/renogy_yx/Desktop/localization/XcodeProject/LocalizationWorkbenchXcode/LocalizationWorkbench/SharedViews.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "功能 %lld / %lld",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 177
+        }
+      },
+      {
+        "comment": "",
+        "key": "上一个",
+        "location": {
+          "startingColumn": 23,
+          "startingLine": 148
+        }
+      },
+      {
+        "comment": "",
+        "key": "下一个",
+        "location": {
+          "startingColumn": 23,
+          "startingLine": 156
+        }
+      },
+      {
+        "comment": "",
+        "key": "切换功能",
+        "location": {
+          "startingColumn": 23,
+          "startingLine": 170
+        }
+      },
+      {
+        "comment": "",
+        "key": "粘贴",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 639
+        }
+      },
+      {
+        "comment": "",
+        "key": "打开",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 649
+        }
+      },
+      {
+        "comment": "",
+        "key": "清空",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 654
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 681
+        }
+      },
+      {
+        "comment": "",
+        "key": "打开",
+        "location": {
+          "startingColumn": 36,
+          "startingLine": 724
+        }
+      },
+      {
+        "comment": "",
+        "key": "清空",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 765
+        }
+      },
+      {
+        "comment": "",
+        "key": "终止",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 771
+        }
+      },
+      {
+        "comment": "",
+        "key": "终止",
+        "location": {
+          "startingColumn": 27,
+          "startingLine": 837
+        }
+      },
+      {
+        "comment": "",
+        "key": "稍后",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 1032
+        }
+      },
+      {
+        "comment": "",
+        "key": "完成",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 1038
+        }
+      },
+      {
+        "comment": "",
+        "key": "设置项目根目录",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 1022
+        }
+      },
+      {
+        "comment": "",
+        "key": "迁移类功能会基于这个目录自动填充源码、注释文件和报告路径。",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 1024
+        }
+      },
+      {
+        "comment": "",
+        "key": "说明",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 1072
+        }
+      },
+      {
+        "comment": "",
+        "key": "这个设置主要影响“.localized 迁移”和“i18n key 迁移”。如果切换到另一个业务工程，只需要在这里改一次。",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 1075
+        }
+      },
+      {
+        "comment": "",
+        "key": "关闭",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 1115
+        }
+      },
+      {
+        "comment": "",
+        "key": "使用说明",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 1106
+        }
+      },
+      {
+        "comment": "",
+        "key": "README 已经打进 app 内，可直接在这里查看。",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 1108
+        }
+      }
+    ]
+  },
+  "version": 1
+}

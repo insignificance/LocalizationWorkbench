@@ -1,0 +1,63 @@
+{
+  "buildCommand" : {
+    "command" : "build",
+    "skipDependencies" : false,
+    "style" : "buildOnly"
+  },
+  "configuredTargets" : [
+    {
+      "guid" : "7c9aa678c7f129c1e9c8c7606df3fa181c835bbcb53a8cae8f856845aba81237"
+    }
+  ],
+  "containerPath" : "/Users/renogy_yx/Desktop/localization/XcodeProject/LocalizationWorkbenchXcode/LocalizationWorkbench.xcodeproj",
+  "continueBuildingAfterErrors" : false,
+  "dependencyScope" : "workspace",
+  "enableIndexBuildArena" : false,
+  "hideShellScriptEnvironment" : false,
+  "parameters" : {
+    "action" : "build",
+    "activeArchitecture" : "arm64",
+    "activeRunDestination" : {
+      "disableOnlyActiveArch" : false,
+      "platform" : "macosx",
+      "sdk" : "macosx26.2",
+      "sdkVariant" : "macos",
+      "supportedArchitectures" : [
+        "arm64e",
+        "arm64",
+        "x86_64"
+      ],
+      "targetArchitecture" : "arm64"
+    },
+    "arenaInfo" : {
+      "buildIntermediatesPath" : "/Users/renogy_yx/Desktop/localization/XcodeProject/LocalizationWorkbenchXcode/build/Build/Intermediates.noindex",
+      "buildProductsPath" : "/Users/renogy_yx/Desktop/localization/XcodeProject/LocalizationWorkbenchXcode/build/Build/Products",
+      "derivedDataPath" : "/Users/renogy_yx/Desktop/localization/XcodeProject/LocalizationWorkbenchXcode/build",
+      "indexDataStoreFolderPath" : "/Users/renogy_yx/Desktop/localization/XcodeProject/LocalizationWorkbenchXcode/build/Index.noindex/DataStore",
+      "indexEnableDataStore" : true,
+      "indexPCHPath" : "/Users/renogy_yx/Desktop/localization/XcodeProject/LocalizationWorkbenchXcode/build/Index.noindex/PrecompiledHeaders",
+      "pchPath" : "/Users/renogy_yx/Desktop/localization/XcodeProject/LocalizationWorkbenchXcode/build/Build/Intermediates.noindex/PrecompiledHeaders"
+    },
+    "configurationName" : "Release",
+    "overrides" : {
+      "commandLine" : {
+        "table" : {
+          "CODE_SIGNING_ALLOWED" : "NO"
+        }
+      },
+      "synthesized" : {
+        "table" : {
+          "ACTION" : "build",
+          "ENABLE_PREVIEWS" : "NO",
+          "ENABLE_XOJIT_PREVIEWS" : "YES"
+        }
+      }
+    }
+  },
+  "schemeCommand" : "launch",
+  "showNonLoggedProgress" : true,
+  "useDryRun" : false,
+  "useImplicitDependencies" : true,
+  "useLegacyBuildLocations" : false,
+  "useParallelTargets" : true
+}

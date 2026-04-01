@@ -1,0 +1,12 @@
+{
+  "/Users/renogy_yx/Desktop/localization/XcodeProject/LocalizationWorkbenchXcode/LocalizationWorkbench/AppSupport.swift" : {
+    "abi-baseline-json" : "/Users/renogy_yx/Desktop/localization/XcodeProject/LocalizationWorkbenchXcode/build/Build/Intermediates.noindex/LocalizationWorkbench.build/Release/LocalizationWorkbench.build/Objects-normal/arm64/LocalizationWorkbench.abi.json",
+    "const-values" : "/Users/renogy_yx/Desktop/localization/XcodeProject/LocalizationWorkbenchXcode/build/Build/Intermediates.noindex/LocalizationWorkbench.build/Release/LocalizationWorkbench.build/Objects-normal/arm64/LocalizationWorkbench-primary.swiftconstvalues",
+    "dependencies" : "/Users/renogy_yx/Desktop/localization/XcodeProject/LocalizationWorkbenchXcode/build/Build/Intermediates.noindex/LocalizationWorkbench.build/Release/LocalizationWorkbench.build/Objects-normal/arm64/LocalizationWorkbench-primary.d",
+    "diagnostics" : "/Users/renogy_yx/Desktop/localization/XcodeProject/LocalizationWorkbenchXcode/build/Build/Intermediates.noindex/LocalizationWorkbench.build/Release/LocalizationWorkbench.build/Objects-normal/arm64/LocalizationWorkbench-primary.dia",
+    "objc-header" : "/Users/renogy_yx/Desktop/localization/XcodeProject/LocalizationWorkbenchXcode/build/Build/Intermediates.noindex/LocalizationWorkbench.build/Release/LocalizationWorkbench.build/Objects-normal/arm64/LocalizationWorkbench-Swift.h",
+    "swiftdoc" : "/Users/renogy_yx/Desktop/localization/XcodeProject/LocalizationWorkbenchXcode/build/Build/Intermediates.noindex/LocalizationWorkbench.build/Release/LocalizationWorkbench.build/Objects-normal/arm64/LocalizationWorkbench.swiftdoc",
+    "swiftmodule" : "/Users/renogy_yx/Desktop/localization/XcodeProject/LocalizationWorkbenchXcode/build/Build/Intermediates.noindex/LocalizationWorkbench.build/Release/LocalizationWorkbench.build/Objects-normal/arm64/LocalizationWorkbench.swiftmodule",
+    "swiftsourceinfo" : "/Users/renogy_yx/Desktop/localization/XcodeProject/LocalizationWorkbenchXcode/build/Build/Intermediates.noindex/LocalizationWorkbench.build/Release/LocalizationWorkbench.build/Objects-normal/arm64/LocalizationWorkbench.swiftsourceinfo"
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "source": "/Users/renogy_yx/Desktop/localization/XcodeProject/LocalizationWorkbenchXcode/LocalizationWorkbench/LocalizationWorkbenchApp.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Localization Workbench",
+        "location": {
+          "startingColumn": 21,
+          "startingLine": 36
+        }
+      }
+    ]
+  },
+  "version": 1
+}

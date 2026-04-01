@@ -1,0 +1,272 @@
+{
+  "source": "/Users/renogy_yx/Desktop/localization/XcodeProject/LocalizationWorkbenchXcode/LocalizationWorkbench/WorkflowViews.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "输出格式",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 177
+        }
+      },
+      {
+        "comment": "",
+        "key": "输出格式",
+        "location": {
+          "startingColumn": 32,
+          "startingLine": 179
+        }
+      },
+      {
+        "comment": "",
+        "key": "冲突策略",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 188
+        }
+      },
+      {
+        "comment": "",
+        "key": "冲突策略",
+        "location": {
+          "startingColumn": 32,
+          "startingLine": 190
+        }
+      },
+      {
+        "comment": "",
+        "key": "输出文件基名",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 201
+        }
+      },
+      {
+        "comment": "",
+        "key": "Localizable",
+        "location": {
+          "startingColumn": 35,
+          "startingLine": 203
+        }
+      },
+      {
+        "comment": "",
+        "key": "开发语言",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 208
+        }
+      },
+      {
+        "comment": "",
+        "key": "例如 en",
+        "location": {
+          "startingColumn": 35,
+          "startingLine": 210
+        }
+      },
+      {
+        "comment": "",
+        "key": "Header 行号",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 217
+        }
+      },
+      {
+        "comment": "",
+        "key": "1",
+        "location": {
+          "startingColumn": 35,
+          "startingLine": 219
+        }
+      },
+      {
+        "comment": "",
+        "key": "Key 列",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 225
+        }
+      },
+      {
+        "comment": "",
+        "key": "A",
+        "location": {
+          "startingColumn": 35,
+          "startingLine": 227
+        }
+      },
+      {
+        "comment": "",
+        "key": "开启工作簿扫描后，脚本内部会固定启用 App 真值过滤。",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 244
+        }
+      },
+      {
+        "comment": "",
+        "key": "扫描整个工作簿并只处理带 App 列的 sheet",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 239
+        }
+      },
+      {
+        "comment": "",
+        "key": "仅导出 App 为真值的行",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 240
+        }
+      },
+      {
+        "comment": "",
+        "key": "Sheet 名称",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 251
+        }
+      },
+      {
+        "comment": "",
+        "key": "留空则使用索引",
+        "location": {
+          "startingColumn": 35,
+          "startingLine": 253
+        }
+      },
+      {
+        "comment": "",
+        "key": "Sheet 索引",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 258
+        }
+      },
+      {
+        "comment": "",
+        "key": "0",
+        "location": {
+          "startingColumn": 35,
+          "startingLine": 260
+        }
+      },
+      {
+        "comment": "",
+        "key": "App 列名",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 269
+        }
+      },
+      {
+        "comment": "",
+        "key": "App",
+        "location": {
+          "startingColumn": 35,
+          "startingLine": 271
+        }
+      },
+      {
+        "comment": "",
+        "key": "App 真值",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 276
+        }
+      },
+      {
+        "comment": "",
+        "key": "TRUE,true,1,yes,y",
+        "location": {
+          "startingColumn": 35,
+          "startingLine": 278
+        }
+      },
+      {
+        "comment": "",
+        "key": "Header 搜索行数",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 484
+        }
+      },
+      {
+        "comment": "",
+        "key": "20",
+        "location": {
+          "startingColumn": 31,
+          "startingLine": 486
+        }
+      },
+      {
+        "comment": "",
+        "key": "关闭时只做 dry-run，控制台会输出扫描结果，不改动磁盘内容。",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 620
+        }
+      },
+      {
+        "comment": "",
+        "key": "直接写回文件",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 618
+        }
+      },
+      {
+        "comment": "",
+        "key": "按项目根目录填充默认路径",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 757
+        }
+      },
+      {
+        "comment": "",
+        "key": "直接写回源码",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 828
+        }
+      },
+      {
+        "comment": "",
+        "key": "缺失注释回退策略",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 818
+        }
+      },
+      {
+        "comment": "",
+        "key": "缺失注释回退策略",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 820
+        }
+      },
+      {
+        "comment": "",
+        "key": "直接应用替换",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 1051
+        }
+      },
+      {
+        "comment": "",
+        "key": "按项目根目录填充默认路径",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 997
+        }
+      }
+    ]
+  },
+  "version": 1
+}

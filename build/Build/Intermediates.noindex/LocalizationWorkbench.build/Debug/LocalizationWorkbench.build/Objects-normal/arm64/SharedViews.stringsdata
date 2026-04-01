@@ -1,0 +1,112 @@
+{
+  "source": "/Users/renogy_yx/Desktop/localization/XcodeProject/LocalizationWorkbenchXcode/LocalizationWorkbench/SharedViews.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "功能 %lld / %lld",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 176
+        }
+      },
+      {
+        "comment": "",
+        "key": "上一个",
+        "location": {
+          "startingColumn": 23,
+          "startingLine": 147
+        }
+      },
+      {
+        "comment": "",
+        "key": "下一个",
+        "location": {
+          "startingColumn": 23,
+          "startingLine": 155
+        }
+      },
+      {
+        "comment": "",
+        "key": "切换功能",
+        "location": {
+          "startingColumn": 23,
+          "startingLine": 169
+        }
+      },
+      {
+        "comment": "",
+        "key": "打开",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 553
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 580
+        }
+      },
+      {
+        "comment": "",
+        "key": "打开",
+        "location": {
+          "startingColumn": 36,
+          "startingLine": 624
+        }
+      },
+      {
+        "comment": "",
+        "key": "清空",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 665
+        }
+      },
+      {
+        "comment": "",
+        "key": "终止",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 671
+        }
+      },
+      {
+        "comment": "",
+        "key": "终止",
+        "location": {
+          "startingColumn": 27,
+          "startingLine": 739
+        }
+      },
+      {
+        "comment": "",
+        "key": "关闭",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 930
+        }
+      },
+      {
+        "comment": "",
+        "key": "使用说明",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 921
+        }
+      },
+      {
+        "comment": "",
+        "key": "README 已经打进 app 内，可直接在这里查看。",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 923
+        }
+      }
+    ]
+  },
+  "version": 1
+}

@@ -1,0 +1,176 @@
+{
+  "source": "/Users/renogy_yx/Desktop/localization/XcodeProject/LocalizationWorkbenchXcode/LocalizationWorkbench/WorkflowViews.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "输出格式",
+        "location": {
+          "startingColumn": 32,
+          "startingLine": 188
+        }
+      },
+      {
+        "comment": "",
+        "key": "冲突策略",
+        "location": {
+          "startingColumn": 32,
+          "startingLine": 201
+        }
+      },
+      {
+        "comment": "",
+        "key": "Localizable",
+        "location": {
+          "startingColumn": 35,
+          "startingLine": 214
+        }
+      },
+      {
+        "comment": "",
+        "key": "例如 en",
+        "location": {
+          "startingColumn": 35,
+          "startingLine": 223
+        }
+      },
+      {
+        "comment": "",
+        "key": "1",
+        "location": {
+          "startingColumn": 35,
+          "startingLine": 232
+        }
+      },
+      {
+        "comment": "",
+        "key": "A",
+        "location": {
+          "startingColumn": 35,
+          "startingLine": 242
+        }
+      },
+      {
+        "comment": "",
+        "key": "补充：当你保持默认“第一个 sheet”、没有填写 Sheet 名称，且没有手动开启整本扫描时，脚本会尝试自动识别当前 Excel 是单 sheet 还是多 sheet App 模式。",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 310
+        }
+      },
+      {
+        "comment": "",
+        "key": "留空则使用索引",
+        "location": {
+          "startingColumn": 35,
+          "startingLine": 275
+        }
+      },
+      {
+        "comment": "",
+        "key": "0",
+        "location": {
+          "startingColumn": 35,
+          "startingLine": 284
+        }
+      },
+      {
+        "comment": "",
+        "key": "App",
+        "location": {
+          "startingColumn": 35,
+          "startingLine": 295
+        }
+      },
+      {
+        "comment": "",
+        "key": "TRUE,true,1,yes,y",
+        "location": {
+          "startingColumn": 35,
+          "startingLine": 304
+        }
+      },
+      {
+        "comment": "",
+        "key": "Header 搜索行数",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 514
+        }
+      },
+      {
+        "comment": "",
+        "key": "20",
+        "location": {
+          "startingColumn": 31,
+          "startingLine": 516
+        }
+      },
+      {
+        "comment": "",
+        "key": "关闭时只做 dry-run，控制台会输出扫描结果，不改动磁盘内容。",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 650
+        }
+      },
+      {
+        "comment": "",
+        "key": "直接写回文件",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 648
+        }
+      },
+      {
+        "comment": "",
+        "key": "按项目根目录填充默认路径",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 805
+        }
+      },
+      {
+        "comment": "",
+        "key": "直接写回源码",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 876
+        }
+      },
+      {
+        "comment": "",
+        "key": "缺失注释回退策略",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 866
+        }
+      },
+      {
+        "comment": "",
+        "key": "缺失注释回退策略",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 868
+        }
+      },
+      {
+        "comment": "",
+        "key": "直接应用替换",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 1152
+        }
+      },
+      {
+        "comment": "",
+        "key": "按项目根目录填充默认路径",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 1098
+        }
+      }
+    ]
+  },
+  "version": 1
+}
