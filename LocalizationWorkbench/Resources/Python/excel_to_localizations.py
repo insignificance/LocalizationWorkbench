@@ -171,6 +171,7 @@ class OutputSpec:
     table_name: str
     key_column: Optional[str]
     key_header: Optional[str]
+    optional: bool = False
 
 
 def parse_args() -> argparse.Namespace:
@@ -789,6 +790,7 @@ def build_output_specs(args: argparse.Namespace) -> List[OutputSpec]:
             table_name=table_name,
             key_column=args.key_column,
             key_header=primary_key_header or None,
+            optional=False,
         )
     ]
 
@@ -800,6 +802,7 @@ def build_output_specs(args: argparse.Namespace) -> List[OutputSpec]:
                 table_name=table_name,
                 key_column=None,
                 key_header=extra_key_header,
+                optional=True,
             )
         )
 
@@ -1041,11 +1044,35 @@ def collect_entries_from_workbook(
         )
 
     if not merged:
+        if output_spec.optional:
+            log_optional_output_spec_skipped(
+                issue_log,
+                output_spec,
+                path.name,
+                f'Optional key header "{output_spec.key_header}" was not found or had no usable rows in workbook mode.',
+            )
+            return [], []
         raise ValueError("No matching rows were found in sheets with an app column.")
 
     ordered_languages = sorted(all_languages)
     ordered_entries = sorted(merged.items(), key=lambda item: item[0])
     return ordered_languages, ordered_entries
+
+
+def log_optional_output_spec_skipped(
+    issue_log: Optional[IssueLog],
+    output_spec: OutputSpec,
+    source_name: str,
+    message: str,
+) -> None:
+    if issue_log is not None:
+        issue_log.add(
+            "INFO",
+            "optional_key_skipped",
+            message,
+            sheet=source_name,
+        )
+    print(f'Info: skipped optional key source "{describe_output_spec(output_spec)}" in "{source_name}"')
 
 
 def workbook_supports_app_mode(
@@ -1212,6 +1239,18 @@ def collect_entries_from_file(
 
     rows = read_xlsx(path, args.sheet_name, args.sheet_index)
     sheet_label = resolve_selected_sheet_label(path, args.sheet_name, args.sheet_index)
+    header = rows.get(args.header_row, {})
+    if output_spec.optional and output_spec.key_header:
+        key_column_index = find_header_column(header, [output_spec.key_header])
+        if key_column_index is None:
+            log_optional_output_spec_skipped(
+                issue_log,
+                output_spec,
+                sheet_label,
+                f'Optional key header "{output_spec.key_header}" was not found in the sheet header row.',
+            )
+            return [], []
+
     languages, entries = parse_rows(
         rows,
         args.header_row,
@@ -1223,7 +1262,6 @@ def collect_entries_from_file(
     if not args.app_true_only:
         return languages, entries
 
-    header = rows.get(args.header_row, {})
     key_column_index = resolve_key_column_index(
         header,
         output_spec.key_column or args.key_column,
@@ -1270,6 +1308,8 @@ def collect_entries_from_inputs(
         )
 
     if not merged_entries:
+        if output_spec.optional:
+            return languages, []
         raise ValueError("No localization entries were collected from the provided Excel files.")
 
     ordered_entries = sorted(merged_entries.items(), key=lambda item: item[0])

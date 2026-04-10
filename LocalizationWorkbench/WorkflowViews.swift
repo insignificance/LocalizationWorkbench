@@ -76,12 +76,18 @@ struct ExcelConversionView: View {
     @State private var keyHeader = ""
     @AppStorage("LocalizationWorkbench.ExcelConversion.extraKeyHeader")
     private var extraKeyHeader = ""
-    @State private var sheetName = ""
-    @State private var sheetIndex = "0"
-    @State private var appColumn = "App"
-    @State private var appTrueValues = "TRUE,true,1,yes,y"
-    @State private var appTrueOnly = false
-    @State private var allSheetsWithApp = false
+    @AppStorage("LocalizationWorkbench.ExcelConversion.sheetName")
+    private var sheetName = ""
+    @AppStorage("LocalizationWorkbench.ExcelConversion.sheetIndex")
+    private var sheetIndex = "0"
+    @AppStorage("LocalizationWorkbench.ExcelConversion.appColumn")
+    private var appColumn = "App"
+    @AppStorage("LocalizationWorkbench.ExcelConversion.appTrueValues")
+    private var appTrueValues = "TRUE,true,1,yes,y"
+    @AppStorage("LocalizationWorkbench.ExcelConversion.appTrueOnly")
+    private var appTrueOnly = true
+    @AppStorage("LocalizationWorkbench.ExcelConversion.allSheetsWithApp")
+    private var allSheetsWithApp = false
     @State private var conflictPolicy: ExcelConflictPolicy = .keepFirst
     @State private var logFile = ""
 
