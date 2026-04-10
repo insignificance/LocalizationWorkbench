@@ -73,6 +73,9 @@ struct ExcelConversionView: View {
     @State private var developmentLanguage = ""
     @State private var headerRow = "1"
     @State private var keyColumn = "A"
+    @State private var keyHeader = ""
+    @AppStorage("LocalizationWorkbench.ExcelConversion.extraKeyHeader")
+    private var extraKeyHeader = ""
     @State private var sheetName = ""
     @State private var sheetIndex = "0"
     @State private var appColumn = "App"
@@ -119,6 +122,7 @@ struct ExcelConversionView: View {
                 tips: [
                     "工作簿比较复杂时，优先使用“扫描整个工作簿并只处理带 App 列的 sheet”。",
                     "如果不同文件里有重名 key，建议先用“保留首次值”避免意外覆盖。",
+                    "遇到 `名称（英文）` / `排障建议（英文）` 这种双翻译分组时，优先填写 Key 表头而不是只填列字母。",
                     "如果只是初始化 String Catalog，可以直接导出双格式，后续再在 Xcode 里继续维护。",
                 ]
             )
@@ -243,7 +247,29 @@ struct ExcelConversionView: View {
                             .textFieldStyle(.roundedBorder)
                             .font(.system(.body, design: .monospaced))
                     }
+
+                    ParameterFieldCard(
+                        title: "Key 表头（可选）",
+                        description: "复杂 Excel 建议直接按表头定位 key 列。填写后会覆盖上面的 Key 列配置。",
+                        example: "例如 AppDevKey、AppDevKey（排障建议）"
+                    ) {
+                        TextField("留空则按列字母", text: $keyHeader)
+                            .textFieldStyle(.roundedBorder)
+                    }
+
+                    ParameterFieldCard(
+                        title: "额外 Key 表头（可选）",
+                        description: "如果同一个 sheet 里还有第二套 key，可在这里再指定一个表头，脚本会把这套 key 连同对应翻译一起并入同一份输出。",
+                        example: "例如 AppDevKey（排障建议）"
+                    ) {
+                        TextField("会记住上次填写的值", text: $extraKeyHeader)
+                            .textFieldStyle(.roundedBorder)
+                    }
                 }
+
+                Text("补充：当语言列表头是 `名称（英文）`、`排障建议（英文）` 这种格式时，脚本会按 Key 表头自动挑选对应那一组语言列。`AppDevKey` 默认取“名称”组，`AppDevKey（排障建议）` 会取“排障建议”组，然后两套 key 会合并进同一份 `.strings` / `.xcstrings`。")
+                    .font(.system(size: 11, weight: .medium, design: .serif))
+                    .foregroundStyle(Color.black.opacity(0.56))
             }
 
             SectionCard(
@@ -374,6 +400,12 @@ struct ExcelConversionView: View {
         args += ["--app-column", appColumn.trimmedOr("App")]
         args += ["--app-true-values", appTrueValues.trimmedOr("TRUE,true,1,yes,y")]
         args += ["--conflict-policy", conflictPolicy.rawValue]
+        if !keyHeader.trimmed.isEmpty {
+            args += ["--key-header", keyHeader.trimmed]
+        }
+        if !extraKeyHeader.trimmed.isEmpty {
+            args += ["--extra-key-header", extraKeyHeader.trimmed]
+        }
 
         if !sheetName.trimmed.isEmpty {
             args += ["--sheet-name", sheetName.trimmed]

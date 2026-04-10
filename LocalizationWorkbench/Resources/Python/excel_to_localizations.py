@@ -11,6 +11,7 @@ import xml.etree.ElementTree as ET
 import zipfile
 from collections import Counter
 from collections import OrderedDict
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -64,6 +65,16 @@ NON_LOCALE_HEADER_NAMES = {
 
 DEFAULT_TRUE_VALUES = {"true", "1", "yes", "y"}
 ESCAPED_VALUE_PATTERN = re.compile(r'\\(?:[nrt"\'\\]|u[0-9a-fA-F]{4}|U[0-9a-fA-F]{8})')
+LOCALE_HEADER_GROUP_PATTERN = re.compile(r"^(?P<prefix>.+?)\s*[（(]\s*(?P<locale>[^()（）]+?)\s*[）)]$")
+KEY_HEADER_NAMES = {
+    "devkey",
+    "dev key",
+    "文案的key",
+    "id",
+    "错误码",
+    "appdevkey",
+}
+DEFAULT_PRIMARY_GROUP_NAMES = ("名称", "name")
 
 
 class IssueLog:
@@ -155,6 +166,13 @@ class IssueLog:
         path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+@dataclass(frozen=True)
+class OutputSpec:
+    table_name: str
+    key_column: Optional[str]
+    key_header: Optional[str]
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Convert one or more Excel .xlsx files into iOS .strings and/or .xcstrings files."
@@ -194,9 +212,24 @@ def parse_args() -> argparse.Namespace:
         help="Column that contains localization keys. Default: A.",
     )
     parser.add_argument(
+        "--key-header",
+        help="Header name of the localization key column. Overrides --key-column when provided.",
+    )
+    parser.add_argument(
         "--table-name",
         default="Localizable",
         help="Base filename for output. Default: Localizable.",
+    )
+    parser.add_argument(
+        "--extra-key-header",
+        help=(
+            "Optional header name of an additional localization key column. "
+            "When provided, matching keys are merged into the same output table."
+        ),
+    )
+    parser.add_argument(
+        "--extra-table-name",
+        help=argparse.SUPPRESS,
     )
     parser.add_argument(
         "--development-language",
@@ -390,6 +423,10 @@ def index_to_column(column_index: int) -> str:
     return "".join(reversed(letters))
 
 
+def normalize_header_name(value: str) -> str:
+    return re.sub(r"\s+", "", value).strip().lower()
+
+
 def normalize_language_code(value: str) -> str:
     cleaned = value.strip().replace("_", "-")
     if not cleaned:
@@ -405,7 +442,7 @@ def normalize_language_code(value: str) -> str:
     return "-".join(normalized)
 
 
-def header_to_locale(value: str) -> Optional[str]:
+def locale_token_to_code(value: str) -> Optional[str]:
     normalized = value.strip()
     if not normalized:
         return None
@@ -425,6 +462,30 @@ def header_to_locale(value: str) -> Optional[str]:
             return None
         return normalize_language_code(candidate)
     return None
+
+
+def parse_locale_header(value: str) -> Optional[Tuple[str, str]]:
+    normalized = value.strip()
+    if not normalized:
+        return None
+
+    direct_locale = locale_token_to_code(normalized)
+    if direct_locale is not None:
+        return "", direct_locale
+
+    match = LOCALE_HEADER_GROUP_PATTERN.fullmatch(normalized)
+    if match is None:
+        return None
+
+    locale = locale_token_to_code(match.group("locale"))
+    if locale is None:
+        return None
+    return match.group("prefix").strip(), locale
+
+
+def header_to_locale(value: str) -> Optional[str]:
+    parsed = parse_locale_header(value)
+    return parsed[1] if parsed is not None else None
 
 
 def lproj_folder(language_code: str) -> str:
@@ -490,6 +551,7 @@ def parse_rows(
     rows: Dict[int, Dict[int, str]],
     header_row: int,
     key_column: str,
+    key_header: Optional[str] = None,
     issue_log: Optional[IssueLog] = None,
     sheet_name: Optional[str] = None,
 ) -> Tuple[List[str], List[Tuple[str, Dict[str, str]]]]:
@@ -497,19 +559,19 @@ def parse_rows(
     if not header:
         raise ValueError(f"Header row {header_row} is empty or missing.")
 
-    key_column_index = column_to_index(key_column)
-
-    languages: List[str] = []
-    language_columns: List[Tuple[int, str]] = []
-    for column_number in sorted(header):
-        if column_number == key_column_index:
-            continue
-        raw_language = header[column_number].strip()
-        language = header_to_locale(raw_language)
-        if language is None:
-            continue
-        languages.append(language)
-        language_columns.append((column_number, language))
+    key_column_index = resolve_key_column_index(
+        header,
+        key_column,
+        key_header,
+        auto_detect_default_column=True,
+    )
+    key_header_value = header.get(key_column_index, key_header or index_to_column(key_column_index))
+    language_columns = build_language_columns_from_header(
+        header,
+        build_excluded_columns(key_column_index),
+        key_header_value=key_header_value,
+    )
+    languages = [language for _, language in language_columns]
 
     if not languages:
         raise ValueError("No language columns were found in the header row.")
@@ -570,27 +632,178 @@ def is_truthy(value: str, truthy_values: set) -> bool:
 
 
 def find_header_column(header: Dict[int, str], expected_names: List[str]) -> Optional[int]:
-    normalized_targets = {name.strip().lower() for name in expected_names}
+    normalized_targets = {normalize_header_name(name) for name in expected_names}
     for column_number, value in header.items():
-        if value.strip().lower() in normalized_targets:
+        if normalize_header_name(value) in normalized_targets:
             return column_number
     return None
 
 
 def build_language_columns_from_header(
-    header: Dict[int, str], excluded_columns: set
+    header: Dict[int, str], excluded_columns: set, key_header_value: str = ""
 ) -> List[Tuple[int, str]]:
-    result: List[Tuple[int, str]] = []
-    seen = set()
+    groups = build_locale_groups_from_header(header, excluded_columns)
+    if not groups:
+        return []
+
+    selected_prefix = resolve_locale_group_prefix(groups, key_header_value)
+    return groups[selected_prefix]
+
+
+def build_locale_groups_from_header(
+    header: Dict[int, str], excluded_columns: set
+) -> "OrderedDict[str, List[Tuple[int, str]]]":
+    groups: "OrderedDict[str, List[Tuple[int, str]]]" = OrderedDict()
+    seen_locales_by_prefix: Dict[str, set] = {}
+
     for column_number in sorted(header):
         if column_number in excluded_columns:
             continue
-        locale = header_to_locale(header[column_number])
-        if locale is None or locale in seen:
+
+        parsed = parse_locale_header(header[column_number])
+        if parsed is None:
             continue
-        seen.add(locale)
-        result.append((column_number, locale))
-    return result
+
+        prefix, locale = parsed
+        if prefix not in groups:
+            groups[prefix] = []
+            seen_locales_by_prefix[prefix] = set()
+        if locale in seen_locales_by_prefix[prefix]:
+            continue
+        seen_locales_by_prefix[prefix].add(locale)
+        groups[prefix].append((column_number, locale))
+
+    return groups
+
+
+def normalize_group_prefix(value: str) -> str:
+    return value.strip().lower()
+
+
+def display_group_prefix(value: str) -> str:
+    return value or "<default>"
+
+
+def find_group_prefix(groups: "OrderedDict[str, List[Tuple[int, str]]]", expected_prefix: str) -> Optional[str]:
+    normalized_expected = normalize_group_prefix(expected_prefix)
+    for prefix in groups:
+        if normalize_group_prefix(prefix) == normalized_expected:
+            return prefix
+    return None
+
+
+def infer_translation_group_prefix(key_header_value: str) -> Optional[str]:
+    normalized = key_header_value.strip()
+    if not normalized:
+        return None
+
+    match = re.search(r"[（(]\s*([^()（）]+?)\s*[）)]\s*$", normalized)
+    if match is None:
+        return None
+    return match.group(1).strip()
+
+
+def resolve_locale_group_prefix(
+    groups: "OrderedDict[str, List[Tuple[int, str]]]", key_header_value: str
+) -> str:
+    inferred_prefix = infer_translation_group_prefix(key_header_value)
+    if inferred_prefix:
+        matched_prefix = find_group_prefix(groups, inferred_prefix)
+        if matched_prefix is not None:
+            return matched_prefix
+        available_groups = ", ".join(display_group_prefix(prefix) for prefix in groups)
+        raise ValueError(
+            f'Could not match key header "{key_header_value}" to a translation group. '
+            f"Available groups: {available_groups}."
+        )
+
+    if len(groups) == 1:
+        return next(iter(groups))
+
+    default_group = find_group_prefix(groups, "")
+    if default_group is not None:
+        return default_group
+
+    for candidate in DEFAULT_PRIMARY_GROUP_NAMES:
+        matched_prefix = find_group_prefix(groups, candidate)
+        if matched_prefix is not None:
+            return matched_prefix
+
+    available_groups = ", ".join(display_group_prefix(prefix) for prefix in groups)
+    raise ValueError(
+        "Multiple translation groups were found in the sheet header. "
+        f"Available groups: {available_groups}."
+    )
+
+
+def resolve_key_column_index(
+    header: Dict[int, str],
+    key_column: str,
+    key_header: Optional[str],
+    auto_detect_default_column: bool = False,
+) -> int:
+    if key_header:
+        column_index = find_header_column(header, [key_header])
+        if column_index is None:
+            raise ValueError(f'Key header "{key_header}" was not found in the sheet header row.')
+        return column_index
+
+    requested_column_index = column_to_index(key_column)
+    if not auto_detect_default_column or key_column.strip().upper() != "A":
+        return requested_column_index
+
+    requested_header = header.get(requested_column_index, "")
+    if is_likely_key_header(requested_header):
+        return requested_column_index
+
+    detected_column_index = find_default_key_column(header)
+    if detected_column_index is not None:
+        return detected_column_index
+    return requested_column_index
+
+
+def is_likely_key_header(value: str) -> bool:
+    normalized = normalize_header_name(value)
+    if normalized in KEY_HEADER_NAMES:
+        return True
+    return "key" in normalized and header_to_locale(value) is None
+
+
+def find_default_key_column(header: Dict[int, str]) -> Optional[int]:
+    for column_number in sorted(header):
+        if is_likely_key_header(header[column_number]):
+            return column_number
+    return None
+
+
+def build_excluded_columns(*column_numbers: Optional[int]) -> set:
+    return {column_number for column_number in column_numbers if column_number is not None}
+
+
+def build_output_specs(args: argparse.Namespace) -> List[OutputSpec]:
+    table_name = args.table_name.strip() or "Localizable"
+    primary_key_header = args.key_header.strip() if args.key_header else None
+
+    specs = [
+        OutputSpec(
+            table_name=table_name,
+            key_column=args.key_column,
+            key_header=primary_key_header or None,
+        )
+    ]
+
+    extra_key_header = args.extra_key_header.strip() if args.extra_key_header else ""
+
+    if extra_key_header:
+        specs.append(
+            OutputSpec(
+                table_name=table_name,
+                key_column=None,
+                key_header=extra_key_header,
+            )
+        )
+
+    return specs
 
 
 def collect_entries_from_sheet(
@@ -729,6 +942,7 @@ def collect_entries_from_workbook(
     app_column_name: str,
     truthy_values: set,
     conflict_policy: str,
+    output_spec: OutputSpec,
     issue_log: Optional[IssueLog] = None,
 ) -> Tuple[List[str], List[Tuple[str, Dict[str, str]]]]:
     merged: Dict[str, Dict[str, str]] = {}
@@ -761,20 +975,31 @@ def collect_entries_from_workbook(
                 )
             continue
 
-        key_column_index = find_header_column(header, ["Dev Key", "文案的key", "id", "错误码"])
+        if output_spec.key_header:
+            key_column_index = find_header_column(header, [output_spec.key_header])
+        else:
+            key_column_index = find_default_key_column(header)
         if key_column_index is None:
             if issue_log is not None:
+                message = (
+                    f'Skipped sheet because the key header "{output_spec.key_header}" was not found.'
+                    if output_spec.key_header
+                    else "Skipped sheet because a recognized key column was not found."
+                )
                 issue_log.add(
                     "WARNING",
                     "missing_key_column",
-                    "Skipped sheet because a recognized key column was not found.",
+                    message,
                     sheet=source_name,
                     row=header_row,
                 )
             continue
 
+        key_header_value = header.get(key_column_index, output_spec.key_header or "")
         language_columns = build_language_columns_from_header(
-            header, {key_column_index, app_column_index}
+            header,
+            build_excluded_columns(key_column_index, app_column_index),
+            key_header_value=key_header_value,
         )
         if not language_columns:
             if issue_log is not None:
@@ -810,7 +1035,10 @@ def collect_entries_from_workbook(
 
         all_languages.update(locale for _, locale in language_columns)
         merge_entries(merged, entries, source_name, conflict_policy, issue_log)
-        print(f'Collected {len(entries)} keys from sheet "{sheet_name}" in "{path.name}"')
+        print(
+            f'Collected {len(entries)} keys from sheet "{sheet_name}" in "{path.name}" '
+            f'for key source "{describe_output_spec(output_spec)}"'
+        )
 
     if not merged:
         raise ValueError("No matching rows were found in sheets with an app column.")
@@ -820,7 +1048,9 @@ def collect_entries_from_workbook(
     return ordered_languages, ordered_entries
 
 
-def workbook_supports_app_mode(path: Path, header_row: int, app_column_name: str) -> bool:
+def workbook_supports_app_mode(
+    path: Path, header_row: int, app_column_name: str, output_spec: OutputSpec
+) -> bool:
     for sheet_name in list_sheet_names(path):
         rows = read_xlsx(path, sheet_name, 0)
         header = rows.get(header_row, {})
@@ -831,12 +1061,18 @@ def workbook_supports_app_mode(path: Path, header_row: int, app_column_name: str
         if app_column_index is None:
             continue
 
-        key_column_index = find_header_column(header, ["Dev Key", "文案的key", "id", "错误码"])
+        if output_spec.key_header:
+            key_column_index = find_header_column(header, [output_spec.key_header])
+        else:
+            key_column_index = find_default_key_column(header)
         if key_column_index is None:
             continue
 
+        key_header_value = header.get(key_column_index, output_spec.key_header or "")
         language_columns = build_language_columns_from_header(
-            header, {key_column_index, app_column_index}
+            header,
+            build_excluded_columns(key_column_index, app_column_index),
+            key_header_value=key_header_value,
         )
         if language_columns:
             return True
@@ -948,7 +1184,10 @@ def resolve_selected_sheet_label(path: Path, sheet_name: Optional[str], sheet_in
 
 
 def collect_entries_from_file(
-    path: Path, args: argparse.Namespace, issue_log: Optional[IssueLog] = None
+    path: Path,
+    args: argparse.Namespace,
+    output_spec: OutputSpec,
+    issue_log: Optional[IssueLog] = None,
 ) -> Tuple[List[str], List[Tuple[str, Dict[str, str]]]]:
     truthy_values = normalized_truthy_values(args.app_true_values)
     use_workbook_mode = args.all_sheets_with_app
@@ -957,6 +1196,7 @@ def collect_entries_from_file(
             path=path,
             header_row=args.header_row,
             app_column_name=args.app_column,
+            output_spec=output_spec,
         )
 
     if use_workbook_mode:
@@ -966,6 +1206,7 @@ def collect_entries_from_file(
             app_column_name=args.app_column,
             truthy_values=truthy_values,
             conflict_policy=args.conflict_policy,
+            output_spec=output_spec,
             issue_log=issue_log,
         )
 
@@ -974,7 +1215,8 @@ def collect_entries_from_file(
     languages, entries = parse_rows(
         rows,
         args.header_row,
-        args.key_column,
+        output_spec.key_column or args.key_column,
+        key_header=output_spec.key_header,
         issue_log=issue_log,
         sheet_name=sheet_label,
     )
@@ -982,10 +1224,18 @@ def collect_entries_from_file(
         return languages, entries
 
     header = rows.get(args.header_row, {})
-    key_column_index = column_to_index(args.key_column)
+    key_column_index = resolve_key_column_index(
+        header,
+        output_spec.key_column or args.key_column,
+        output_spec.key_header,
+        auto_detect_default_column=True,
+    )
+    key_header_value = header.get(key_column_index, output_spec.key_header or "")
     app_column_index = find_header_column(header, [args.app_column])
     language_columns = build_language_columns_from_header(
-        header, {key_column_index, app_column_index}
+        header,
+        build_excluded_columns(key_column_index, app_column_index),
+        key_header_value=key_header_value,
     )
     filtered_entries = collect_entries_from_sheet(
         rows=rows,
@@ -1002,16 +1252,22 @@ def collect_entries_from_file(
 
 
 def collect_entries_from_inputs(
-    paths: List[Path], args: argparse.Namespace, issue_log: Optional[IssueLog] = None
+    paths: List[Path],
+    args: argparse.Namespace,
+    output_spec: OutputSpec,
+    issue_log: Optional[IssueLog] = None,
 ) -> Tuple[List[str], List[Tuple[str, Dict[str, str]]]]:
     merged_entries: Dict[str, Dict[str, str]] = {}
     languages: List[str] = []
 
     for path in paths:
-        file_languages, file_entries = collect_entries_from_file(path, args, issue_log)
+        file_languages, file_entries = collect_entries_from_file(path, args, output_spec, issue_log)
         languages = merge_language_lists(languages, file_languages)
         merge_entries(merged_entries, file_entries, path.name, args.conflict_policy, issue_log)
-        print(f'Collected {len(file_entries)} keys from file "{path.name}"')
+        print(
+            f'Collected {len(file_entries)} keys from file "{path.name}" '
+            f'for key source "{describe_output_spec(output_spec)}"'
+        )
 
     if not merged_entries:
         raise ValueError("No localization entries were collected from the provided Excel files.")
@@ -1020,20 +1276,46 @@ def collect_entries_from_inputs(
     return languages, ordered_entries
 
 
+def describe_output_spec(output_spec: OutputSpec) -> str:
+    if output_spec.key_header:
+        return output_spec.key_header
+    if output_spec.key_column:
+        return f"column {output_spec.key_column}"
+    return output_spec.table_name
+
+
 def main() -> int:
     args = parse_args()
     issue_log = IssueLog()
     log_path = resolve_log_path(args.output, args.log_file)
 
     try:
-        languages, entries = collect_entries_from_inputs(args.input, args, issue_log)
+        output_specs = build_output_specs(args)
+        merged_entries: Dict[str, Dict[str, str]] = {}
+        languages: List[str] = []
+
+        for output_spec in output_specs:
+            spec_languages, spec_entries = collect_entries_from_inputs(args.input, args, output_spec, issue_log)
+            languages = merge_language_lists(languages, spec_languages)
+            merge_entries(
+                merged_entries,
+                spec_entries,
+                describe_output_spec(output_spec),
+                args.conflict_policy,
+                issue_log,
+            )
+
+        if not merged_entries:
+            raise ValueError("No localization entries were collected from the provided Excel files.")
+
+        ordered_entries = sorted(merged_entries.items(), key=lambda item: item[0])
         development_language = args.development_language or languages[0]
         write_outputs(
             output_dir=args.output,
             table_name=args.table_name,
             output_format=args.format,
             languages=languages,
-            entries=entries,
+            entries=ordered_entries,
             development_language=development_language,
         )
     except Exception as error:
