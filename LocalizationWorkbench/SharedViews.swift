@@ -776,6 +776,36 @@ struct ConsoleCard: View {
                 }
             }
 
+            if let progress = runner.progress {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 8) {
+                        Text(progress.stage)
+                            .font(.system(size: 12, weight: .semibold, design: .rounded))
+
+                        Spacer()
+
+                        Text(progress.percentageText)
+                            .font(.system(size: 12, weight: .bold, design: .monospaced))
+                            .foregroundStyle(accent)
+                    }
+
+                    if let fraction = progress.fraction {
+                        ProgressView(value: fraction)
+                            .tint(accent)
+                    } else if runner.isRunning {
+                        ProgressView()
+                            .controlSize(.small)
+                    }
+
+                    Text(progress.detail)
+                        .font(.system(size: 11, weight: .medium, design: .serif))
+                        .foregroundStyle(Color.black.opacity(0.56))
+                        .lineLimit(2)
+                }
+                .padding(12)
+                .background(accent.opacity(0.07), in: RoundedRectangle(cornerRadius: 14))
+            }
+
             if !runner.commandLine.isEmpty {
                 Text(runner.commandLine)
                     .font(.system(size: 11, weight: .regular, design: .monospaced))
@@ -882,6 +912,9 @@ struct ExecutionStatusBadge: View {
         if runner.isRunning {
             return .running
         }
+        if runner.wasCancelled {
+            return .cancelled
+        }
         if let exitCode = runner.lastExitCode {
             return exitCode == 0 ? .success : .failure
         }
@@ -894,6 +927,8 @@ struct ExecutionStatusBadge: View {
             return "待执行"
         case .running:
             return "执行中"
+        case .cancelled:
+            return "已终止"
         case .success:
             return "执行成功"
         case .failure:
@@ -906,7 +941,12 @@ struct ExecutionStatusBadge: View {
         case .idle:
             return "准备好后可直接开始"
         case .running:
+            if let progress = runner.progress {
+                return "\(progress.stage) · \(progress.percentageText)"
+            }
             return "脚本正在后台运行"
+        case .cancelled:
+            return "任务已由用户取消"
         case .success:
             return "本次执行已完成"
         case .failure:
@@ -923,6 +963,8 @@ struct ExecutionStatusBadge: View {
             return "sparkles"
         case .running:
             return "bolt.fill"
+        case .cancelled:
+            return "stop.circle.fill"
         case .success:
             return "checkmark.circle.fill"
         case .failure:
@@ -936,6 +978,8 @@ struct ExecutionStatusBadge: View {
             return Color.black.opacity(0.6)
         case .running:
             return accent
+        case .cancelled:
+            return Color.orange
         case .success:
             return Color.green
         case .failure:
@@ -994,6 +1038,7 @@ struct ExecutionStatusBadge: View {
 private enum RunnerPhase {
     case idle
     case running
+    case cancelled
     case success
     case failure
 }

@@ -21,6 +21,20 @@ struct ProcessRequest {
     }
 }
 
+/// 来自 Python 脚本的结构化进度，用于避免把进度事件刷入控制台正文。
+struct ProcessProgress: Equatable {
+    let stage: String
+    let fraction: Double?
+    let detail: String
+
+    var percentageText: String {
+        guard let fraction else {
+            return "处理中"
+        }
+        return "\(Int((fraction * 100).rounded()))%"
+    }
+}
+
 enum PythonBridgeError: LocalizedError {
     case pythonNotFound
     case scriptNotFound(String)
@@ -325,14 +339,24 @@ final class ProcessRunner: ObservableObject {
     @Published var isRunning = false
     @Published var lastExitCode: Int32?
     @Published var launchError: String?
+    @Published private(set) var progress: ProcessProgress?
+    @Published private(set) var wasCancelled = false
 
     private var process: Process?
+    private var standardOutputBuffer = ""
+    private var standardErrorBuffer = ""
+
+    private static let progressPrefix = "@@LOCALIZATION_PROGRESS@@"
 
     func clear() {
         output = ""
         commandLine = ""
         lastExitCode = nil
         launchError = nil
+        progress = nil
+        wasCancelled = false
+        standardOutputBuffer = ""
+        standardErrorBuffer = ""
     }
 
     func presentSetupError(_ message: String) {
@@ -347,6 +371,7 @@ final class ProcessRunner: ObservableObject {
         clear()
         isRunning = true
         commandLine = request.commandLine
+        progress = ProcessProgress(stage: "准备启动", fraction: nil, detail: "等待脚本响应")
 
         let process = Process()
         process.executableURL = URL(fileURLWithPath: request.executablePath)
@@ -361,11 +386,14 @@ final class ProcessRunner: ObservableObject {
         process.standardOutput = stdout
         process.standardError = stderr
 
-        attach(pipe: stdout, prefix: "")
-        attach(pipe: stderr, prefix: "[stderr] ")
+        attach(pipe: stdout, prefix: "", receivesProgress: true)
+        attach(pipe: stderr, prefix: "[stderr] ", receivesProgress: false)
 
         process.terminationHandler = { [weak self] process in
             Task { @MainActor [weak self] in
+                guard self?.process === process else {
+                    return
+                }
                 self?.isRunning = false
                 self?.lastExitCode = process.terminationStatus
                 self?.append("\n[exit] \(process.terminationStatus)\n")
@@ -373,11 +401,12 @@ final class ProcessRunner: ObservableObject {
             }
         }
 
+        self.process = process
         do {
             try process.run()
-            self.process = process
             append("[start] \(request.commandLine)\n")
         } catch {
+            self.process = nil
             isRunning = false
             lastExitCode = -1
             launchError = error.localizedDescription
@@ -389,23 +418,82 @@ final class ProcessRunner: ObservableObject {
         guard let process, process.isRunning else {
             return
         }
+        wasCancelled = true
         process.terminate()
         append("\n[cancel] 用户终止了当前任务。\n")
     }
 
-    private func attach(pipe: Pipe, prefix: String) {
+    private func attach(pipe: Pipe, prefix: String, receivesProgress: Bool) {
         pipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
             let data = handle.availableData
             guard !data.isEmpty else {
                 handle.readabilityHandler = nil
+                Task { @MainActor [weak self] in
+                    self?.flushPendingOutput(receivesProgress: receivesProgress, prefix: prefix)
+                }
                 return
             }
 
             let text = String(decoding: data, as: UTF8.self)
             Task { @MainActor [weak self] in
-                self?.append(prefix + text)
+                self?.receiveOutput(text, prefix: prefix, receivesProgress: receivesProgress)
             }
         }
+    }
+
+    private func receiveOutput(_ text: String, prefix: String, receivesProgress: Bool) {
+        // Pipe 回调可能截断一行，因此按流分别保留未完成的尾部内容。
+        var bufferedText = (receivesProgress ? standardOutputBuffer : standardErrorBuffer) + text
+
+        while let lineBreak = bufferedText.firstIndex(of: "\n") {
+            let line = String(bufferedText[..<lineBreak])
+            bufferedText.removeSubrange(...lineBreak)
+            handleOutputLine(line, prefix: prefix, receivesProgress: receivesProgress)
+        }
+
+        if receivesProgress {
+            standardOutputBuffer = bufferedText
+        } else {
+            standardErrorBuffer = bufferedText
+        }
+    }
+
+    private func flushPendingOutput(receivesProgress: Bool, prefix: String) {
+        let pendingText = receivesProgress ? standardOutputBuffer : standardErrorBuffer
+        guard !pendingText.isEmpty else {
+            return
+        }
+        handleOutputLine(pendingText, prefix: prefix, receivesProgress: receivesProgress)
+        if receivesProgress {
+            standardOutputBuffer = ""
+        } else {
+            standardErrorBuffer = ""
+        }
+    }
+
+    private func handleOutputLine(_ rawLine: String, prefix: String, receivesProgress: Bool) {
+        let line = rawLine.trimmingCharacters(in: .newlines)
+        if receivesProgress, updateProgress(from: line) {
+            return
+        }
+        append(prefix + rawLine + "\n")
+    }
+
+    private func updateProgress(from line: String) -> Bool {
+        guard line.hasPrefix(Self.progressPrefix) else {
+            return false
+        }
+        // 只拦截协议事件；格式异常时仍保留原始日志，方便排查脚本问题。
+        let payload = String(line.dropFirst(Self.progressPrefix.count))
+        guard let data = payload.data(using: .utf8),
+              let event = try? JSONDecoder().decode(ProcessProgressEvent.self, from: data)
+        else {
+            return false
+        }
+
+        let fraction = event.fraction.map { min(max($0, 0), 1) }
+        progress = ProcessProgress(stage: event.stage, fraction: fraction, detail: event.detail)
+        return true
     }
 
     private func append(_ text: String) {
@@ -414,6 +502,12 @@ final class ProcessRunner: ObservableObject {
             output = String(output.suffix(180_000))
         }
     }
+}
+
+private struct ProcessProgressEvent: Decodable {
+    let stage: String
+    let fraction: Double?
+    let detail: String
 }
 
 enum OpenPanelHelper {

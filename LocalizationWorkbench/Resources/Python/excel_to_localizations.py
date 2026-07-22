@@ -4,16 +4,21 @@
 #  
 
 import argparse
+from contextlib import ExitStack
 import json
 import re
+import signal
+import sqlite3
 import sys
+import tempfile
+import time
 import xml.etree.ElementTree as ET
 import zipfile
 from collections import Counter
 from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Iterator, List, Optional, Tuple
 
 
 NS = {
@@ -75,11 +80,19 @@ KEY_HEADER_NAMES = {
     "appdevkey",
 }
 DEFAULT_PRIMARY_GROUP_NAMES = ("名称", "name")
+PROGRESS_PREFIX = "@@LOCALIZATION_PROGRESS@@"
+DEFAULT_CHUNK_ROWS = 2_000
+SHARED_STRINGS_DISK_THRESHOLD_BYTES = 16 * 1024 * 1024
+ENTRY_STORE_MEMORY_LIMIT = 20_000
+MAX_RECORDED_ISSUES = 10_000
 
 
 class IssueLog:
     def __init__(self) -> None:
         self.items: List[Dict[str, str]] = []
+        self.total_count = 0
+        self.suppressed_count = 0
+        self.level_counts = Counter()
 
     def add(
         self,
@@ -93,8 +106,16 @@ class IssueLog:
         column_header: Optional[str] = None,
         key: Optional[str] = None,
     ) -> None:
+        self.total_count += 1
+        normalized_level = level.upper()
+        self.level_counts[normalized_level] += 1
+        # 大量脏数据不应让问题日志本身占满内存。
+        if len(self.items) >= MAX_RECORDED_ISSUES:
+            self.suppressed_count += 1
+            return
+
         entry: Dict[str, str] = {
-            "level": level.upper(),
+            "level": normalized_level,
             "category": category,
             "message": message,
         }
@@ -113,16 +134,22 @@ class IssueLog:
     def write(self, path: Path) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
 
-        level_counts = Counter(item["level"] for item in self.items)
         lines = [
             "Excel To iOS Localizations Log",
             "",
-            f"Total issues: {len(self.items)}",
-            f"ERROR: {level_counts.get('ERROR', 0)}",
-            f"WARNING: {level_counts.get('WARNING', 0)}",
-            f"INFO: {level_counts.get('INFO', 0)}",
+            f"Total issues: {self.total_count}",
+            f"ERROR: {self.level_counts.get('ERROR', 0)}",
+            f"WARNING: {self.level_counts.get('WARNING', 0)}",
+            f"INFO: {self.level_counts.get('INFO', 0)}",
             "",
         ]
+
+        if self.suppressed_count:
+            lines.append(
+                f"Only the first {MAX_RECORDED_ISSUES} issues are listed; "
+                f"{self.suppressed_count} additional issues were suppressed."
+            )
+            lines.append("")
 
         if not self.items:
             lines.append("No issues found.")
@@ -172,6 +199,415 @@ class OutputSpec:
     key_column: Optional[str]
     key_header: Optional[str]
     optional: bool = False
+
+
+class ProgressReporter:
+    def __init__(self) -> None:
+        self.last_emit_at = 0.0
+        self.last_stage = ""
+
+    def emit(self, stage: str, fraction: float, detail: str, *, force: bool = False) -> None:
+        now = time.monotonic()
+        fraction = max(0.0, min(1.0, fraction))
+        if not force and stage == self.last_stage and now - self.last_emit_at < 0.16:
+            return
+
+        payload = {
+            "stage": stage,
+            "fraction": round(fraction, 4),
+            "detail": detail,
+        }
+        print(PROGRESS_PREFIX + json.dumps(payload, ensure_ascii=True, separators=(",", ":")), flush=True)
+        self.last_emit_at = now
+        self.last_stage = stage
+
+
+class ConversionProgress:
+    def __init__(self, input_paths: List[Path]) -> None:
+        self.reporter = ProgressReporter()
+        self.input_sizes = {path: max(path.stat().st_size, 1) for path in input_paths}
+        self.total_input_size = max(sum(self.input_sizes.values()), 1)
+        self.completed_input_size = 0
+        self.current_file_size = 1
+        self.current_file_name = ""
+        self.current_file_index = 0
+        self.total_file_count = len(input_paths)
+        self.current_sheet_count = 0
+        self.current_sheet_index = 0
+        self.current_sheet_size = 1
+        self.completed_sheet_size = 0
+        self.total_sheet_size = 1
+
+    def begin_file(
+        self,
+        path: Path,
+        file_index: int,
+        sheet_names: List[str],
+        sheet_sizes: List[int],
+    ) -> None:
+        self.current_file_name = path.name
+        self.current_file_index = file_index
+        self.current_file_size = self.input_sizes[path]
+        self.current_sheet_count = len(sheet_names)
+        self.current_sheet_index = 0
+        self.current_sheet_size = 1
+        self.completed_sheet_size = 0
+        self.total_sheet_size = max(sum(max(size, 1) for size in sheet_sizes), 1)
+        self._emit_parse_progress(0.0, "正在准备工作簿")
+
+    def begin_sheet(self, sheet_name: str, sheet_index: int, sheet_size: int) -> None:
+        self.current_sheet_index = sheet_index
+        self.current_sheet_size = max(sheet_size, 1)
+        self._emit_parse_progress(
+            0.0,
+            f"{self.current_file_name} · {sheet_name} · 第 {sheet_index}/{self.current_sheet_count} 个 Sheet",
+            force=True,
+        )
+
+    def update_sheet(self, bytes_read: int, rows_processed: int) -> None:
+        sheet_fraction = min(max(bytes_read, 0) / self.current_sheet_size, 1.0)
+        self._emit_parse_progress(
+            sheet_fraction,
+            (
+                f"{self.current_file_name} · 第 {self.current_sheet_index}/{self.current_sheet_count} 个 Sheet · "
+                f"已处理 {rows_processed:,} 行（分块处理中）"
+            ),
+        )
+
+    def finish_sheet(self) -> None:
+        self.completed_sheet_size += self.current_sheet_size
+        self._emit_parse_progress(0.0, "当前 Sheet 处理完成", force=True)
+
+    def finish_file(self) -> None:
+        self.completed_input_size += self.current_file_size
+        self.reporter.emit(
+            "解析工作簿",
+            0.9 * min(self.completed_input_size / self.total_input_size, 1.0),
+            f"已完成 {self.current_file_index}/{self.total_file_count} 个工作簿",
+            force=True,
+        )
+
+    def update_output(self, stage: str, current: int, total: int, detail: str) -> None:
+        output_fraction = current / max(total, 1)
+        self.reporter.emit(stage, 0.9 + 0.1 * output_fraction, detail)
+
+    def finish(self) -> None:
+        self.reporter.emit("转换完成", 1.0, "所有输出文件已生成", force=True)
+
+    def _emit_parse_progress(self, sheet_fraction: float, detail: str, *, force: bool = False) -> None:
+        file_fraction = (
+            self.completed_sheet_size + self.current_sheet_size * sheet_fraction
+        ) / self.total_sheet_size
+        total_fraction = (
+            self.completed_input_size + self.current_file_size * min(file_fraction, 1.0)
+        ) / self.total_input_size
+        self.reporter.emit("流式解析 Excel", 0.9 * total_fraction, detail, force=force)
+
+
+@dataclass(frozen=True)
+class StreamedRow:
+    number: int
+    values: Dict[int, str]
+    bytes_read: int
+
+
+class DiskBackedSharedStrings:
+    def __init__(self, workbook_zip: zipfile.ZipFile, temporary_directory: Path) -> None:
+        self.database_path = temporary_directory / "shared_strings.sqlite"
+        self.connection = sqlite3.connect(self.database_path)
+        self.connection.execute("CREATE TABLE strings (id INTEGER PRIMARY KEY, value TEXT NOT NULL)")
+        self.cache: "OrderedDict[int, str]" = OrderedDict()
+
+        batch: List[Tuple[int, str]] = []
+        index = 0
+        with workbook_zip.open("xl/sharedStrings.xml") as source:
+            parser = ET.iterparse(source, events=("start", "end"))
+            root: Optional[ET.Element] = None
+            for event, element in parser:
+                if event == "start" and root is None:
+                    root = element
+                    continue
+                if event != "end" or element.tag != f"{{{NS['main']}}}si":
+                    continue
+
+                batch.append((index, extract_text(element)))
+                index += 1
+                if len(batch) >= DEFAULT_CHUNK_ROWS:
+                    self.connection.executemany("INSERT INTO strings (id, value) VALUES (?, ?)", batch)
+                    batch.clear()
+                element.clear()
+                if root is not None:
+                    root.clear()
+
+        if batch:
+            self.connection.executemany("INSERT INTO strings (id, value) VALUES (?, ?)", batch)
+        self.connection.commit()
+
+    def __getitem__(self, index: int) -> str:
+        cached = self.cache.get(index)
+        if cached is not None:
+            self.cache.move_to_end(index)
+            return cached
+
+        row = self.connection.execute("SELECT value FROM strings WHERE id = ?", (index,)).fetchone()
+        if row is None:
+            raise IndexError(f"Shared string index {index} is out of range.")
+
+        value = row[0]
+        self.cache[index] = value
+        if len(self.cache) > 4_096:
+            self.cache.popitem(last=False)
+        return value
+
+    def close(self) -> None:
+        self.connection.close()
+
+
+class WorkbookReader:
+    def __init__(self, path: Path) -> None:
+        self.path = path
+        self.workbook_zip: Optional[zipfile.ZipFile] = None
+        self.temporary_directory = tempfile.TemporaryDirectory(prefix="localization-workbench-xlsx-")
+        self.sheet_paths: Dict[str, str] = {}
+        self.sheet_names: List[str] = []
+        self.shared_strings: Optional[object] = None
+
+    def __enter__(self) -> "WorkbookReader":
+        if self.path.suffix.lower() != ".xlsx":
+            raise ValueError("Only .xlsx input is supported.")
+
+        self.workbook_zip = zipfile.ZipFile(self.path)
+        _, relationships, sheets = load_workbook_metadata(self.workbook_zip)
+        for sheet in sheets:
+            sheet_name = sheet.attrib.get("name", "")
+            relationship_id = sheet.attrib.get(f"{{{NS['office_rel']}}}id")
+            if not sheet_name or not relationship_id:
+                continue
+            target = next(
+                (
+                    relation.attrib.get("Target")
+                    for relation in relationships.findall("rel:Relationship", NS)
+                    if relation.attrib.get("Id") == relationship_id
+                ),
+                None,
+            )
+            if target is None:
+                continue
+            self.sheet_names.append(sheet_name)
+            self.sheet_paths[sheet_name] = normalize_zip_path("xl", target)
+        if not self.sheet_names:
+            raise ValueError("Workbook does not contain any sheets.")
+        return self
+
+    def __exit__(self, exc_type: object, exc_value: object, traceback: object) -> None:
+        self.close()
+
+    def close(self) -> None:
+        if isinstance(self.shared_strings, DiskBackedSharedStrings):
+            self.shared_strings.close()
+        if self.workbook_zip is not None:
+            self.workbook_zip.close()
+            self.workbook_zip = None
+        self.temporary_directory.cleanup()
+
+    def selected_sheet_name(self, sheet_name: Optional[str], sheet_index: int) -> str:
+        if sheet_name:
+            if sheet_name not in self.sheet_paths:
+                raise ValueError(f'Sheet "{sheet_name}" was not found.')
+            return sheet_name
+        if sheet_index < 0 or sheet_index >= len(self.sheet_names):
+            raise ValueError(f"Sheet index {sheet_index} is out of range.")
+        return self.sheet_names[sheet_index]
+
+    def sheet_size(self, sheet_name: str) -> int:
+        workbook_zip = self._require_zip()
+        return workbook_zip.getinfo(self.sheet_paths[sheet_name]).file_size
+
+    def read_header(self, sheet_name: str, header_row: int) -> Dict[int, str]:
+        for row in self.iter_rows(sheet_name):
+            if row.number == header_row:
+                return row.values
+            if row.number > header_row:
+                break
+        return {}
+
+    def iter_rows(self, sheet_name: str) -> Iterator[StreamedRow]:
+        workbook_zip = self._require_zip()
+        shared_strings = self._load_shared_strings(workbook_zip)
+        row_tag = f"{{{NS['main']}}}row"
+        sheet_data_tag = f"{{{NS['main']}}}sheetData"
+
+        with workbook_zip.open(self.sheet_paths[sheet_name]) as source:
+            parser = ET.iterparse(source, events=("start", "end"))
+            sheet_data: Optional[ET.Element] = None
+            for event, element in parser:
+                if event == "start" and element.tag == sheet_data_tag:
+                    sheet_data = element
+                    continue
+                if event != "end" or element.tag != row_tag:
+                    continue
+
+                raw_number = element.attrib.get("r")
+                if raw_number is None:
+                    element.clear()
+                    continue
+                row_values: Dict[int, str] = {}
+                for cell in element.findall("main:c", NS):
+                    reference = cell.attrib.get("r", "")
+                    if not reference:
+                        continue
+                    column_letters = re.sub(r"\d", "", reference)
+                    row_values[column_to_index(column_letters)] = read_cell_value(cell, shared_strings).strip()
+
+                # 每处理一行就释放 XML 节点，避免超大 Sheet 常驻内存。
+                yield StreamedRow(int(raw_number), row_values, source.tell())
+                element.clear()
+                if sheet_data is not None:
+                    sheet_data.clear()
+
+    def _require_zip(self) -> zipfile.ZipFile:
+        if self.workbook_zip is None:
+            raise RuntimeError("WorkbookReader must be used as a context manager.")
+        return self.workbook_zip
+
+    def _load_shared_strings(self, workbook_zip: zipfile.ZipFile) -> object:
+        if self.shared_strings is not None:
+            return self.shared_strings
+        try:
+            shared_strings_info = workbook_zip.getinfo("xl/sharedStrings.xml")
+        except KeyError:
+            self.shared_strings = []
+            return self.shared_strings
+
+        if shared_strings_info.file_size >= SHARED_STRINGS_DISK_THRESHOLD_BYTES:
+            print("Large shared string table detected; using temporary on-disk storage.")
+            self.shared_strings = DiskBackedSharedStrings(
+                workbook_zip,
+                Path(self.temporary_directory.name),
+            )
+        else:
+            self.shared_strings = read_shared_strings(workbook_zip)
+        return self.shared_strings
+
+
+class EntryStore:
+    def __init__(self, temporary_directory: Path, issue_log: IssueLog) -> None:
+        self.temporary_directory = temporary_directory
+        self.issue_log = issue_log
+        self.memory_entries: Dict[str, Dict[str, str]] = {}
+        self.connection: Optional[sqlite3.Connection] = None
+        self.entry_count = 0
+
+    @property
+    def uses_disk(self) -> bool:
+        return self.connection is not None
+
+    def merge(
+        self,
+        key: str,
+        localized_values: Dict[str, str],
+        source_name: str,
+        conflict_policy: str,
+    ) -> None:
+        existing = self._read(key)
+        if existing is None:
+            self._write(key, dict(localized_values))
+            self.entry_count += 1
+            if self.connection is None and len(self.memory_entries) > ENTRY_STORE_MEMORY_LIMIT:
+                self._spill_to_disk()
+            return
+
+        changed = False
+        for locale, value in localized_values.items():
+            if locale not in existing:
+                existing[locale] = value
+                changed = True
+                continue
+            if existing[locale] == value:
+                continue
+            if conflict_policy == "error":
+                self.issue_log.add(
+                    "ERROR",
+                    "conflicting_value",
+                    f'Conflicting value found for locale "{locale}" while merging sheets.',
+                    sheet=source_name,
+                    column="locale",
+                    column_header=locale,
+                    key=key,
+                )
+                raise ValueError(
+                    f'Conflicting value for key "{key}" locale "{locale}" found in sheet "{source_name}".'
+                )
+            if conflict_policy == "keep-last":
+                existing[locale] = value
+                changed = True
+                message = f'Replaced earlier value for locale "{locale}" with the value from sheet "{source_name}".'
+            else:
+                message = f'Kept earlier value for locale "{locale}" and ignored the value from sheet "{source_name}".'
+            self.issue_log.add(
+                "WARNING",
+                "conflicting_value",
+                message,
+                sheet=source_name,
+                column="locale",
+                column_header=locale,
+                key=key,
+            )
+
+        if changed:
+            self._write(key, existing)
+
+    def commit(self) -> None:
+        if self.connection is not None:
+            self.connection.commit()
+
+    def iter_entries(self) -> Iterator[Tuple[str, Dict[str, str]]]:
+        if self.connection is None:
+            for key in sorted(self.memory_entries):
+                yield key, self.memory_entries[key]
+            return
+
+        self.connection.commit()
+        cursor = self.connection.execute("SELECT key, values_json FROM entries ORDER BY key")
+        for key, values_json in cursor:
+            yield key, json.loads(values_json)
+
+    def close(self) -> None:
+        if self.connection is not None:
+            self.connection.close()
+            self.connection = None
+
+    def _read(self, key: str) -> Optional[Dict[str, str]]:
+        if self.connection is None:
+            return self.memory_entries.get(key)
+        row = self.connection.execute("SELECT values_json FROM entries WHERE key = ?", (key,)).fetchone()
+        return json.loads(row[0]) if row is not None else None
+
+    def _write(self, key: str, values: Dict[str, str]) -> None:
+        if self.connection is None:
+            self.memory_entries[key] = values
+            return
+        self.connection.execute(
+            "INSERT INTO entries (key, values_json) VALUES (?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET values_json = excluded.values_json",
+            (key, json.dumps(values, ensure_ascii=False, separators=(",", ":"))),
+        )
+
+    def _spill_to_disk(self) -> None:
+        # 超过阈值后将合并结果换到临时 SQLite，避免输出前积累海量字典。
+        database_path = self.temporary_directory / "localized_entries.sqlite"
+        self.connection = sqlite3.connect(database_path)
+        self.connection.execute("CREATE TABLE entries (key TEXT PRIMARY KEY, values_json TEXT NOT NULL)")
+        self.connection.executemany(
+            "INSERT INTO entries (key, values_json) VALUES (?, ?)",
+            [
+                (key, json.dumps(values, ensure_ascii=False, separators=(",", ":")))
+                for key, values in self.memory_entries.items()
+            ],
+        )
+        self.connection.commit()
+        self.memory_entries.clear()
+        print("Large import detected; merged localization entries now use temporary on-disk storage.")
 
 
 def parse_args() -> argparse.Namespace:
@@ -274,32 +710,19 @@ def parse_args() -> argparse.Namespace:
         "--log-file",
         help="Path to the log file. Defaults to <output>/conversion_issues.log.",
     )
-    return parser.parse_args()
-
-
-def read_xlsx(path: Path, sheet_name: Optional[str], sheet_index: int) -> Dict[int, Dict[int, str]]:
-    if path.suffix.lower() != ".xlsx":
-        raise ValueError("Only .xlsx input is supported.")
-
-    with zipfile.ZipFile(path) as workbook_zip:
-        shared_strings = read_shared_strings(workbook_zip)
-        sheet_path = resolve_sheet_path(workbook_zip, sheet_name, sheet_index)
-        sheet_xml = workbook_zip.read(sheet_path)
-        sheet_root = ET.fromstring(sheet_xml)
-
-    rows: Dict[int, Dict[int, str]] = {}
-    for row in sheet_root.findall(".//main:sheetData/main:row", NS):
-        row_number = int(row.attrib["r"])
-        row_values: Dict[int, str] = {}
-        for cell in row.findall("main:c", NS):
-            ref = cell.attrib.get("r", "")
-            if not ref:
-                continue
-            column_letters = re.sub(r"\d", "", ref)
-            column_number = column_to_index(column_letters)
-            row_values[column_number] = read_cell_value(cell, shared_strings).strip()
-        rows[row_number] = row_values
-    return rows
+    parser.add_argument(
+        "--chunk-rows",
+        type=int,
+        default=DEFAULT_CHUNK_ROWS,
+        help=(
+            "Rows processed before committing a streaming batch and updating progress. "
+            f"Default: {DEFAULT_CHUNK_ROWS}."
+        ),
+    )
+    args = parser.parse_args()
+    if args.chunk_rows < 1:
+        parser.error("--chunk-rows must be at least 1.")
+    return args
 
 
 def read_shared_strings(workbook_zip: zipfile.ZipFile) -> List[str]:
@@ -315,38 +738,6 @@ def read_shared_strings(workbook_zip: zipfile.ZipFile) -> List[str]:
     return strings
 
 
-def resolve_sheet_path(
-    workbook_zip: zipfile.ZipFile, sheet_name: Optional[str], sheet_index: int
-) -> str:
-    workbook_root, rels_root, sheets = load_workbook_metadata(workbook_zip)
-    if not sheets:
-        raise ValueError("Workbook does not contain any sheets.")
-
-    selected_sheet = None
-    if sheet_name:
-        for sheet in sheets:
-            if sheet.attrib.get("name") == sheet_name:
-                selected_sheet = sheet
-                break
-        if selected_sheet is None:
-            raise ValueError(f'Sheet "{sheet_name}" was not found.')
-    else:
-        if sheet_index < 0 or sheet_index >= len(sheets):
-            raise ValueError(f"Sheet index {sheet_index} is out of range.")
-        selected_sheet = sheets[sheet_index]
-
-    relationship_id = selected_sheet.attrib.get(f"{{{NS['office_rel']}}}id")
-    if not relationship_id:
-        raise ValueError("Selected sheet is missing a relationship id.")
-
-    for relation in rels_root.findall("rel:Relationship", NS):
-        if relation.attrib.get("Id") == relationship_id:
-            target = relation.attrib["Target"]
-            return normalize_zip_path("xl", target)
-
-    raise ValueError("Could not resolve selected sheet path.")
-
-
 def load_workbook_metadata(
     workbook_zip: zipfile.ZipFile,
 ) -> Tuple[ET.Element, ET.Element, List[ET.Element]]:
@@ -354,12 +745,6 @@ def load_workbook_metadata(
     rels_root = ET.fromstring(workbook_zip.read("xl/_rels/workbook.xml.rels"))
     sheets = workbook_root.findall("main:sheets/main:sheet", NS)
     return workbook_root, rels_root, sheets
-
-
-def list_sheet_names(path: Path) -> List[str]:
-    with zipfile.ZipFile(path) as workbook_zip:
-        _, _, sheets = load_workbook_metadata(workbook_zip)
-    return [sheet.attrib.get("name", "") for sheet in sheets]
 
 
 def normalize_zip_path(base: str, target: str) -> str:
@@ -548,81 +933,6 @@ def normalize_key(value: str) -> str:
     return key
 
 
-def parse_rows(
-    rows: Dict[int, Dict[int, str]],
-    header_row: int,
-    key_column: str,
-    key_header: Optional[str] = None,
-    issue_log: Optional[IssueLog] = None,
-    sheet_name: Optional[str] = None,
-) -> Tuple[List[str], List[Tuple[str, Dict[str, str]]]]:
-    header = rows.get(header_row)
-    if not header:
-        raise ValueError(f"Header row {header_row} is empty or missing.")
-
-    key_column_index = resolve_key_column_index(
-        header,
-        key_column,
-        key_header,
-        auto_detect_default_column=True,
-    )
-    key_header_value = header.get(key_column_index, key_header or index_to_column(key_column_index))
-    language_columns = build_language_columns_from_header(
-        header,
-        build_excluded_columns(key_column_index),
-        key_header_value=key_header_value,
-    )
-    languages = [language for _, language in language_columns]
-
-    if not languages:
-        raise ValueError("No language columns were found in the header row.")
-
-    ordered_rows: List[Tuple[str, Dict[str, str]]] = []
-    seen_keys = set()
-    for row_number in sorted(number for number in rows if number > header_row):
-        row = rows[row_number]
-        key = normalize_key(row.get(key_column_index, ""))
-        if not key:
-            if issue_log is not None:
-                issue_log.add(
-                    "WARNING",
-                    "empty_key",
-                    "Skipped row because the key column is empty.",
-                    sheet=sheet_name,
-                    row=row_number,
-                    column=index_to_column(key_column_index),
-                    column_header=rows.get(header_row, {}).get(key_column_index, ""),
-                )
-            continue
-        if key in seen_keys:
-            raise ValueError(f'Duplicate localization key "{key}" found on row {row_number}.')
-        seen_keys.add(key)
-
-        values: Dict[str, str] = {}
-        for column_number, language in language_columns:
-            value = row.get(column_number, "")
-            if value != "":
-                values[language] = normalize_localized_value(value)
-        if not values and issue_log is not None:
-            issue_log.add(
-                "WARNING",
-                "empty_translation_row",
-                "Skipped row because all recognized locale columns are empty.",
-                sheet=sheet_name,
-                row=row_number,
-                column="multiple",
-                column_header=", ".join(locale for _, locale in language_columns),
-                key=key,
-            )
-            continue
-        ordered_rows.append((key, values))
-
-    if not ordered_rows:
-        raise ValueError("No localization rows were found below the header row.")
-
-    return languages, ordered_rows
-
-
 def normalized_truthy_values(raw_values: str) -> set:
     parsed = {value.strip().lower() for value in raw_values.split(",") if value.strip()}
     return parsed or DEFAULT_TRUE_VALUES
@@ -809,256 +1119,6 @@ def build_output_specs(args: argparse.Namespace) -> List[OutputSpec]:
     return specs
 
 
-def collect_entries_from_sheet(
-    rows: Dict[int, Dict[int, str]],
-    header_row: int,
-    key_column_index: int,
-    language_columns: List[Tuple[int, str]],
-    app_column_index: Optional[int],
-    truthy_values: set,
-    app_true_only: bool,
-    issue_log: Optional[IssueLog] = None,
-    sheet_name: Optional[str] = None,
-) -> List[Tuple[str, Dict[str, str]]]:
-    entries: List[Tuple[str, Dict[str, str]]] = []
-    if app_true_only and app_column_index is None:
-        if issue_log is not None:
-            issue_log.add(
-                "WARNING",
-                "missing_app_column",
-                "Skipped app-only filtering because the app column was not found.",
-                sheet=sheet_name,
-            )
-        return entries
-
-    for row_number in sorted(number for number in rows if number > header_row):
-        row = rows[row_number]
-        if app_true_only:
-            if not is_truthy(row.get(app_column_index, ""), truthy_values):
-                continue
-
-        key = normalize_key(row.get(key_column_index, ""))
-        if not key:
-            if issue_log is not None:
-                issue_log.add(
-                    "WARNING",
-                    "empty_key",
-                    "Skipped row because the key column is empty after filtering.",
-                    sheet=sheet_name,
-                    row=row_number,
-                    column=index_to_column(key_column_index),
-                    column_header=rows.get(header_row, {}).get(key_column_index, ""),
-                )
-            continue
-
-        values: Dict[str, str] = {}
-        for column_number, locale in language_columns:
-            value = row.get(column_number, "")
-            if value != "":
-                values[locale] = normalize_localized_value(value)
-        if values:
-            entries.append((key, values))
-        elif issue_log is not None:
-            issue_log.add(
-                "WARNING",
-                "empty_translation_row",
-                "Skipped row because all recognized locale columns are empty.",
-                sheet=sheet_name,
-                row=row_number,
-                column="multiple",
-                column_header=", ".join(locale for _, locale in language_columns),
-                key=key,
-            )
-    return entries
-
-
-def merge_entries(
-    merged: Dict[str, Dict[str, str]],
-    entries: List[Tuple[str, Dict[str, str]]],
-    source_name: str,
-    conflict_policy: str,
-    issue_log: Optional[IssueLog] = None,
-) -> None:
-    for key, localized_values in entries:
-        if key not in merged:
-            merged[key] = dict(localized_values)
-            continue
-
-        existing = merged[key]
-        for locale, value in localized_values.items():
-            if locale not in existing:
-                existing[locale] = value
-                continue
-            if existing[locale] != value:
-                if conflict_policy == "error":
-                    if issue_log is not None:
-                        issue_log.add(
-                            "ERROR",
-                            "conflicting_value",
-                            f'Conflicting value found for locale "{locale}" while merging sheets.',
-                            sheet=source_name,
-                            column="locale",
-                            column_header=locale,
-                            key=key,
-                        )
-                    raise ValueError(
-                        f'Conflicting value for key "{key}" locale "{locale}" found in sheet "{source_name}".'
-                    )
-                if conflict_policy == "keep-last":
-                    message = (
-                        f'Replaced earlier value for locale "{locale}" with the value from sheet "{source_name}".'
-                    )
-                    print(f'Warning: replacing key "{key}" locale "{locale}" with value from sheet "{source_name}"')
-                    if issue_log is not None:
-                        issue_log.add(
-                            "WARNING",
-                            "conflicting_value",
-                            message,
-                            sheet=source_name,
-                            column="locale",
-                            column_header=locale,
-                            key=key,
-                        )
-                    existing[locale] = value
-                    continue
-                message = (
-                    f'Kept earlier value for locale "{locale}" and ignored the value from sheet "{source_name}".'
-                )
-                print(
-                    f'Warning: keeping earlier value for key "{key}" locale "{locale}", ignoring sheet "{source_name}"'
-                )
-                if issue_log is not None:
-                    issue_log.add(
-                        "WARNING",
-                        "conflicting_value",
-                        message,
-                        sheet=source_name,
-                        column="locale",
-                        column_header=locale,
-                        key=key,
-                    )
-
-
-def collect_entries_from_workbook(
-    path: Path,
-    header_row: int,
-    app_column_name: str,
-    truthy_values: set,
-    conflict_policy: str,
-    output_spec: OutputSpec,
-    issue_log: Optional[IssueLog] = None,
-) -> Tuple[List[str], List[Tuple[str, Dict[str, str]]]]:
-    merged: Dict[str, Dict[str, str]] = {}
-    all_languages = set()
-
-    for sheet_name in list_sheet_names(path):
-        rows = read_xlsx(path, sheet_name, 0)
-        source_name = f"{path.name}:{sheet_name}"
-        header = rows.get(header_row, {})
-        if not header:
-            if issue_log is not None:
-                issue_log.add(
-                    "WARNING",
-                    "missing_header_row",
-                    f"Skipped sheet because header row {header_row} is empty or missing.",
-                    sheet=source_name,
-                    row=header_row,
-                )
-            continue
-
-        app_column_index = find_header_column(header, [app_column_name])
-        if app_column_index is None:
-            if issue_log is not None:
-                issue_log.add(
-                    "INFO",
-                    "sheet_skipped",
-                    f'Skipped sheet because the "{app_column_name}" column was not found.',
-                    sheet=source_name,
-                    row=header_row,
-                )
-            continue
-
-        if output_spec.key_header:
-            key_column_index = find_header_column(header, [output_spec.key_header])
-        else:
-            key_column_index = find_default_key_column(header)
-        if key_column_index is None:
-            if issue_log is not None:
-                message = (
-                    f'Skipped sheet because the key header "{output_spec.key_header}" was not found.'
-                    if output_spec.key_header
-                    else "Skipped sheet because a recognized key column was not found."
-                )
-                issue_log.add(
-                    "WARNING",
-                    "missing_key_column",
-                    message,
-                    sheet=source_name,
-                    row=header_row,
-                )
-            continue
-
-        key_header_value = header.get(key_column_index, output_spec.key_header or "")
-        language_columns = build_language_columns_from_header(
-            header,
-            build_excluded_columns(key_column_index, app_column_index),
-            key_header_value=key_header_value,
-        )
-        if not language_columns:
-            if issue_log is not None:
-                issue_log.add(
-                    "WARNING",
-                    "missing_language_columns",
-                    "Skipped sheet because no recognized locale columns were found.",
-                    sheet=source_name,
-                    row=header_row,
-                )
-            continue
-
-        entries = collect_entries_from_sheet(
-            rows=rows,
-            header_row=header_row,
-            key_column_index=key_column_index,
-            language_columns=language_columns,
-            app_column_index=app_column_index,
-            truthy_values=truthy_values,
-            app_true_only=True,
-            issue_log=issue_log,
-            sheet_name=source_name,
-        )
-        if not entries:
-            if issue_log is not None:
-                issue_log.add(
-                    "INFO",
-                    "no_matching_rows",
-                    "No rows matched the app filter or usable translation content.",
-                    sheet=source_name,
-                )
-            continue
-
-        all_languages.update(locale for _, locale in language_columns)
-        merge_entries(merged, entries, source_name, conflict_policy, issue_log)
-        print(
-            f'Collected {len(entries)} keys from sheet "{sheet_name}" in "{path.name}" '
-            f'for key source "{describe_output_spec(output_spec)}"'
-        )
-
-    if not merged:
-        if output_spec.optional:
-            log_optional_output_spec_skipped(
-                issue_log,
-                output_spec,
-                path.name,
-                f'Optional key header "{output_spec.key_header}" was not found or had no usable rows in workbook mode.',
-            )
-            return [], []
-        raise ValueError("No matching rows were found in sheets with an app column.")
-
-    ordered_languages = sorted(all_languages)
-    ordered_entries = sorted(merged.items(), key=lambda item: item[0])
-    return ordered_languages, ordered_entries
-
-
 def log_optional_output_spec_skipped(
     issue_log: Optional[IssueLog],
     output_spec: OutputSpec,
@@ -1075,24 +1135,126 @@ def log_optional_output_spec_skipped(
     print(f'Info: skipped optional key source "{describe_output_spec(output_spec)}" in "{source_name}"')
 
 
-def workbook_supports_app_mode(
-    path: Path, header_row: int, app_column_name: str, output_spec: OutputSpec
+@dataclass(frozen=True)
+class SheetProcessingPlan:
+    output_spec: OutputSpec
+    key_column_index: int
+    language_columns: List[Tuple[int, str]]
+    app_column_index: Optional[int]
+    app_true_only: bool
+
+
+def header_supports_app_mode(
+    header: Dict[int, str],
+    args: argparse.Namespace,
+    output_spec: OutputSpec,
 ) -> bool:
-    for sheet_name in list_sheet_names(path):
-        rows = read_xlsx(path, sheet_name, 0)
-        header = rows.get(header_row, {})
-        if not header:
-            continue
+    app_column_index = find_header_column(header, [args.app_column])
+    if app_column_index is None:
+        return False
 
-        app_column_index = find_header_column(header, [app_column_name])
-        if app_column_index is None:
-            continue
+    if output_spec.key_header:
+        key_column_index = find_header_column(header, [output_spec.key_header])
+    else:
+        key_column_index = find_default_key_column(header)
+    if key_column_index is None:
+        return False
 
-        if output_spec.key_header:
-            key_column_index = find_header_column(header, [output_spec.key_header])
+    key_header_value = header.get(key_column_index, output_spec.key_header or "")
+    language_columns = build_language_columns_from_header(
+        header,
+        build_excluded_columns(key_column_index, app_column_index),
+        key_header_value=key_header_value,
+    )
+    return bool(language_columns)
+
+
+def should_scan_all_sheets(
+    workbook: WorkbookReader,
+    args: argparse.Namespace,
+    primary_output_spec: OutputSpec,
+) -> bool:
+    if args.all_sheets_with_app:
+        return True
+    if not args.auto_detect_workbook_mode:
+        return False
+
+    for sheet_name in workbook.sheet_names:
+        header = workbook.read_header(sheet_name, args.header_row)
+        if header_supports_app_mode(header, args, primary_output_spec):
+            return True
+    return False
+
+
+def build_sheet_processing_plans(
+    header: Dict[int, str],
+    args: argparse.Namespace,
+    output_specs: List[OutputSpec],
+    *,
+    requires_app_column: bool,
+    source_name: str,
+    issue_log: IssueLog,
+) -> List[SheetProcessingPlan]:
+    app_column_index = find_header_column(header, [args.app_column])
+    if requires_app_column and app_column_index is None:
+        issue_log.add(
+            "INFO",
+            "sheet_skipped",
+            f'Skipped sheet because the "{args.app_column}" column was not found.',
+            sheet=source_name,
+            row=args.header_row,
+        )
+        return []
+
+    if args.app_true_only and not requires_app_column and app_column_index is None:
+        issue_log.add(
+            "WARNING",
+            "missing_app_column",
+            "Skipped app-only filtering because the app column was not found.",
+            sheet=source_name,
+            row=args.header_row,
+        )
+        return []
+
+    plans: List[SheetProcessingPlan] = []
+    for output_spec in output_specs:
+        if requires_app_column:
+            key_column_index = (
+                find_header_column(header, [output_spec.key_header])
+                if output_spec.key_header
+                else find_default_key_column(header)
+            )
         else:
-            key_column_index = find_default_key_column(header)
+            try:
+                key_column_index = resolve_key_column_index(
+                    header,
+                    output_spec.key_column or args.key_column,
+                    output_spec.key_header,
+                    auto_detect_default_column=True,
+                )
+            except ValueError:
+                if output_spec.optional:
+                    log_optional_output_spec_skipped(
+                        issue_log,
+                        output_spec,
+                        source_name,
+                        f'Optional key header "{output_spec.key_header}" was not found in the sheet header row.',
+                    )
+                    continue
+                raise
+
         if key_column_index is None:
+            message = (
+                f'Skipped sheet because the key header "{output_spec.key_header}" was not found.'
+                if output_spec.key_header
+                else "Skipped sheet because a recognized key column was not found."
+            )
+            if output_spec.optional:
+                log_optional_output_spec_skipped(issue_log, output_spec, source_name, message)
+            elif requires_app_column:
+                issue_log.add("WARNING", "missing_key_column", message, sheet=source_name, row=args.header_row)
+            else:
+                raise ValueError(message)
             continue
 
         key_header_value = header.get(key_column_index, output_spec.key_header or "")
@@ -1101,219 +1263,329 @@ def workbook_supports_app_mode(
             build_excluded_columns(key_column_index, app_column_index),
             key_header_value=key_header_value,
         )
-        if language_columns:
-            return True
+        if not language_columns:
+            message = "Skipped sheet because no recognized locale columns were found."
+            if output_spec.optional:
+                log_optional_output_spec_skipped(issue_log, output_spec, source_name, message)
+            elif requires_app_column:
+                issue_log.add("WARNING", "missing_language_columns", message, sheet=source_name, row=args.header_row)
+            else:
+                raise ValueError("No language columns were found in the header row.")
+            continue
 
-    return False
+        plans.append(
+            SheetProcessingPlan(
+                output_spec=output_spec,
+                key_column_index=key_column_index,
+                language_columns=language_columns,
+                app_column_index=app_column_index,
+                app_true_only=requires_app_column or args.app_true_only,
+            )
+        )
+    return plans
 
 
-def build_strings_files(
-    languages: List[str], entries: List[Tuple[str, Dict[str, str]]]
-) -> Dict[str, str]:
-    output: Dict[str, List[str]] = {language: [] for language in languages}
-    for key, localized_values in entries:
-        for language in languages:
-            value = localized_values.get(language)
-            if value is None:
-                continue
-            output[language].append(f'"{key}" = "{escape_strings_value(value)}";')
-
-    return {
-        language: ("\n".join(lines) + ("\n" if lines else ""))
-        for language, lines in output.items()
-    }
-
-
-def build_xcstrings(
+def collect_entries_from_streamed_sheet(
+    workbook: WorkbookReader,
+    sheet_name: str,
+    args: argparse.Namespace,
+    output_specs: List[OutputSpec],
+    *,
+    requires_app_column: bool,
+    entry_store: EntryStore,
     languages: List[str],
-    entries: List[Tuple[str, Dict[str, str]]],
+    language_set: set,
+    collected_counts: Dict[OutputSpec, int],
+    issue_log: IssueLog,
+    progress: ConversionProgress,
+) -> None:
+    source_name = f"{workbook.path.name}:{sheet_name}"
+    header: Optional[Dict[int, str]] = None
+    plans: List[SheetProcessingPlan] = []
+    rows_processed = 0
+    counts = {output_spec: 0 for output_spec in output_specs}
+    truthy_values = normalized_truthy_values(args.app_true_values)
+
+    streamed_row_count = 0
+    last_bytes_read = 0
+    for streamed_row in workbook.iter_rows(sheet_name):
+        streamed_row_count += 1
+        last_bytes_read = streamed_row.bytes_read
+
+        if streamed_row.number < args.header_row:
+            pass
+        elif streamed_row.number == args.header_row:
+            header = streamed_row.values
+            plans = build_sheet_processing_plans(
+                header,
+                args,
+                output_specs,
+                requires_app_column=requires_app_column,
+                source_name=source_name,
+                issue_log=issue_log,
+            )
+            if not plans:
+                # 当前 Sheet 没有可导出的列时无需继续扫描剩余行。
+                return
+        elif header is None:
+            message = f"Header row {args.header_row} is empty or missing."
+            if requires_app_column:
+                issue_log.add("WARNING", "missing_header_row", message, sheet=source_name, row=args.header_row)
+                return
+            raise ValueError(message)
+        else:
+            rows_processed += 1
+            for plan in plans:
+                if plan.app_true_only and not is_truthy(
+                    streamed_row.values.get(plan.app_column_index, ""),
+                    truthy_values,
+                ):
+                    continue
+
+                key = normalize_key(streamed_row.values.get(plan.key_column_index, ""))
+                if not key:
+                    issue_log.add(
+                        "WARNING",
+                        "empty_key",
+                        "Skipped row because the key column is empty after filtering.",
+                        sheet=source_name,
+                        row=streamed_row.number,
+                        column=index_to_column(plan.key_column_index),
+                        column_header=header.get(plan.key_column_index, ""),
+                    )
+                    continue
+
+                localized_values: Dict[str, str] = {}
+                for column_number, locale in plan.language_columns:
+                    value = streamed_row.values.get(column_number, "")
+                    if value != "":
+                        localized_values[locale] = normalize_localized_value(value)
+                if not localized_values:
+                    issue_log.add(
+                        "WARNING",
+                        "empty_translation_row",
+                        "Skipped row because all recognized locale columns are empty.",
+                        sheet=source_name,
+                        row=streamed_row.number,
+                        column="multiple",
+                        column_header=", ".join(locale for _, locale in plan.language_columns),
+                        key=key,
+                    )
+                    continue
+
+                for _, locale in plan.language_columns:
+                    if locale not in language_set:
+                        language_set.add(locale)
+                        languages.append(locale)
+                entry_store.merge(key, localized_values, source_name, args.conflict_policy)
+                collected_counts[plan.output_spec] += 1
+                counts[plan.output_spec] += 1
+
+        if streamed_row_count % args.chunk_rows == 0:
+            entry_store.commit()
+            progress.update_sheet(last_bytes_read, rows_processed)
+
+    if streamed_row_count % args.chunk_rows != 0:
+        entry_store.commit()
+        progress.update_sheet(last_bytes_read, rows_processed)
+
+    if header is None:
+        message = f"Header row {args.header_row} is empty or missing."
+        if requires_app_column:
+            issue_log.add("WARNING", "missing_header_row", message, sheet=source_name, row=args.header_row)
+            return
+        raise ValueError(message)
+
+    for output_spec, count in counts.items():
+        if count:
+            print(
+                f'Collected {count} keys from sheet "{sheet_name}" in "{workbook.path.name}" '
+                f'for key source "{describe_output_spec(output_spec)}"'
+            )
+
+
+def collect_entries_from_inputs_streamed(
+    paths: List[Path],
+    args: argparse.Namespace,
+    output_specs: List[OutputSpec],
+    issue_log: IssueLog,
+    entry_store: EntryStore,
+    progress: ConversionProgress,
+) -> List[str]:
+    languages: List[str] = []
+    language_set = set()
+    collected_counts = {output_spec: 0 for output_spec in output_specs}
+
+    for file_index, path in enumerate(paths, start=1):
+        with WorkbookReader(path) as workbook:
+            requires_app_column = should_scan_all_sheets(workbook, args, output_specs[0])
+            sheet_names = (
+                workbook.sheet_names
+                if requires_app_column
+                else [workbook.selected_sheet_name(args.sheet_name, args.sheet_index)]
+            )
+            sheet_sizes = [workbook.sheet_size(sheet_name) for sheet_name in sheet_names]
+            progress.begin_file(path, file_index, sheet_names, sheet_sizes)
+
+            for sheet_index, (sheet_name, sheet_size) in enumerate(zip(sheet_names, sheet_sizes), start=1):
+                progress.begin_sheet(sheet_name, sheet_index, sheet_size)
+                collect_entries_from_streamed_sheet(
+                    workbook,
+                    sheet_name,
+                    args,
+                    output_specs,
+                    requires_app_column=requires_app_column,
+                    entry_store=entry_store,
+                    languages=languages,
+                    language_set=language_set,
+                    collected_counts=collected_counts,
+                    issue_log=issue_log,
+                    progress=progress,
+                )
+                progress.finish_sheet()
+            progress.finish_file()
+
+    if collected_counts[output_specs[0]] == 0:
+        raise ValueError("No localization entries were collected from the provided Excel files.")
+    return languages
+
+
+def write_strings_files_streamed(
+    output_dir: Path,
+    table_name: str,
+    languages: List[str],
+    entry_store: EntryStore,
+    progress: ConversionProgress,
+    output_offset: int,
+    total_output_units: int,
+) -> int:
+    handles: Dict[str, object] = {}
+    written_paths: Dict[str, Path] = {}
+    entry_count = entry_store.entry_count
+
+    with ExitStack() as stack:
+        for entry_index, (key, localized_values) in enumerate(entry_store.iter_entries(), start=1):
+            for language in languages:
+                value = localized_values.get(language)
+                if value is None:
+                    continue
+                if language not in handles:
+                    language_dir = output_dir / lproj_folder(language)
+                    language_dir.mkdir(parents=True, exist_ok=True)
+                    target_file = language_dir / f"{table_name}.strings"
+                    handles[language] = stack.enter_context(target_file.open("w", encoding="utf-8"))
+                    written_paths[language] = target_file
+                handles[language].write(f'"{key}" = "{escape_strings_value(value)}";\n')
+
+            if entry_index % DEFAULT_CHUNK_ROWS == 0 or entry_index == entry_count:
+                progress.update_output(
+                    "写入 .strings",
+                    output_offset + entry_index,
+                    total_output_units,
+                    f"已写入 {entry_index:,}/{entry_count:,} 条本地化记录",
+                )
+
+    for target_file in written_paths.values():
+        print(f"Wrote {target_file}")
+    return entry_count
+
+
+def write_xcstrings_streamed(
+    output_dir: Path,
+    table_name: str,
+    languages: List[str],
+    entry_store: EntryStore,
     development_language: str,
-) -> Dict[str, object]:
-    strings: Dict[str, object] = {}
-    for key, localized_values in entries:
-        localizations = {}
-        for language in languages:
-            value = localized_values.get(language)
-            if value is None:
-                continue
-            localizations[language] = {
-                "stringUnit": {
-                    "state": "translated",
-                    "value": value,
+    progress: ConversionProgress,
+    output_offset: int,
+    total_output_units: int,
+) -> int:
+    target_file = output_dir / f"{table_name}.xcstrings"
+    entry_count = entry_store.entry_count
+
+    with target_file.open("w", encoding="utf-8") as output:
+        output.write("{\n  \"sourceLanguage\": ")
+        json.dump(normalize_language_code(development_language), output, ensure_ascii=False)
+        output.write(",\n  \"strings\": {\n")
+
+        is_first_entry = True
+        for entry_index, (key, localized_values) in enumerate(entry_store.iter_entries(), start=1):
+            localizations = {}
+            for language in languages:
+                value = localized_values.get(language)
+                if value is None:
+                    continue
+                localizations[language] = {
+                    "stringUnit": {
+                        "state": "translated",
+                        "value": value,
+                    }
                 }
-            }
-        if localizations:
-            strings[key] = {"localizations": localizations}
+            if not localizations:
+                continue
+            if not is_first_entry:
+                output.write(",\n")
+            output.write("    ")
+            json.dump(key, output, ensure_ascii=False)
+            output.write(": ")
+            json.dump({"localizations": localizations}, output, ensure_ascii=False, separators=(",", ":"))
+            is_first_entry = False
 
-    return {
-        "sourceLanguage": normalize_language_code(development_language),
-        "strings": strings,
-        "version": "1.0",
-    }
+            if entry_index % DEFAULT_CHUNK_ROWS == 0 or entry_index == entry_count:
+                progress.update_output(
+                    "写入 .xcstrings",
+                    output_offset + entry_index,
+                    total_output_units,
+                    f"已写入 {entry_index:,}/{entry_count:,} 条本地化记录",
+                )
+
+        output.write("\n  },\n  \"version\": \"1.0\"\n}\n")
+
+    print(f"Wrote {target_file}")
+    return entry_count
 
 
-def write_outputs(
+def write_outputs_streamed(
     output_dir: Path,
     table_name: str,
     output_format: str,
     languages: List[str],
-    entries: List[Tuple[str, Dict[str, str]]],
+    entry_store: EntryStore,
     development_language: str,
+    progress: ConversionProgress,
 ) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
+    output_count = int(output_format in ("strings", "both")) + int(output_format in ("xcstrings", "both"))
+    total_output_units = max(entry_store.entry_count * output_count, 1)
+    output_offset = 0
 
     if output_format in ("strings", "both"):
-        strings_files = build_strings_files(languages, entries)
-        for language, content in strings_files.items():
-            if not content:
-                continue
-            language_dir = output_dir / lproj_folder(language)
-            language_dir.mkdir(parents=True, exist_ok=True)
-            target_file = language_dir / f"{table_name}.strings"
-            target_file.write_text(content, encoding="utf-8")
-            print(f"Wrote {target_file}")
-
-    if output_format in ("xcstrings", "both"):
-        xcstrings_content = build_xcstrings(languages, entries, development_language)
-        target_file = output_dir / f"{table_name}.xcstrings"
-        target_file.write_text(
-            json.dumps(xcstrings_content, ensure_ascii=False, indent=2) + "\n",
-            encoding="utf-8",
+        output_offset += write_strings_files_streamed(
+            output_dir,
+            table_name,
+            languages,
+            entry_store,
+            progress,
+            output_offset,
+            total_output_units,
         )
-        print(f"Wrote {target_file}")
+    if output_format in ("xcstrings", "both"):
+        write_xcstrings_streamed(
+            output_dir,
+            table_name,
+            languages,
+            entry_store,
+            development_language,
+            progress,
+            output_offset,
+            total_output_units,
+        )
 
 
 def resolve_log_path(output_dir: Path, raw_log_file: Optional[str]) -> Path:
     if raw_log_file:
         return Path(raw_log_file)
     return output_dir / "conversion_issues.log"
-
-
-def merge_language_lists(existing: List[str], incoming: List[str]) -> List[str]:
-    ordered = list(existing)
-    seen = set(existing)
-    for language in incoming:
-        if language in seen:
-            continue
-        ordered.append(language)
-        seen.add(language)
-    return ordered
-
-
-def resolve_selected_sheet_label(path: Path, sheet_name: Optional[str], sheet_index: int) -> str:
-    if sheet_name:
-        return f"{path.name}:{sheet_name}"
-
-    sheet_names = list_sheet_names(path)
-    if sheet_index < 0 or sheet_index >= len(sheet_names):
-        raise ValueError(f"Sheet index {sheet_index} is out of range for file {path}.")
-    return f"{path.name}:{sheet_names[sheet_index]}"
-
-
-def collect_entries_from_file(
-    path: Path,
-    args: argparse.Namespace,
-    output_spec: OutputSpec,
-    issue_log: Optional[IssueLog] = None,
-) -> Tuple[List[str], List[Tuple[str, Dict[str, str]]]]:
-    truthy_values = normalized_truthy_values(args.app_true_values)
-    use_workbook_mode = args.all_sheets_with_app
-    if not use_workbook_mode and args.auto_detect_workbook_mode:
-        use_workbook_mode = workbook_supports_app_mode(
-            path=path,
-            header_row=args.header_row,
-            app_column_name=args.app_column,
-            output_spec=output_spec,
-        )
-
-    if use_workbook_mode:
-        return collect_entries_from_workbook(
-            path=path,
-            header_row=args.header_row,
-            app_column_name=args.app_column,
-            truthy_values=truthy_values,
-            conflict_policy=args.conflict_policy,
-            output_spec=output_spec,
-            issue_log=issue_log,
-        )
-
-    rows = read_xlsx(path, args.sheet_name, args.sheet_index)
-    sheet_label = resolve_selected_sheet_label(path, args.sheet_name, args.sheet_index)
-    header = rows.get(args.header_row, {})
-    if output_spec.optional and output_spec.key_header:
-        key_column_index = find_header_column(header, [output_spec.key_header])
-        if key_column_index is None:
-            log_optional_output_spec_skipped(
-                issue_log,
-                output_spec,
-                sheet_label,
-                f'Optional key header "{output_spec.key_header}" was not found in the sheet header row.',
-            )
-            return [], []
-
-    languages, entries = parse_rows(
-        rows,
-        args.header_row,
-        output_spec.key_column or args.key_column,
-        key_header=output_spec.key_header,
-        issue_log=issue_log,
-        sheet_name=sheet_label,
-    )
-    if not args.app_true_only:
-        return languages, entries
-
-    key_column_index = resolve_key_column_index(
-        header,
-        output_spec.key_column or args.key_column,
-        output_spec.key_header,
-        auto_detect_default_column=True,
-    )
-    key_header_value = header.get(key_column_index, output_spec.key_header or "")
-    app_column_index = find_header_column(header, [args.app_column])
-    language_columns = build_language_columns_from_header(
-        header,
-        build_excluded_columns(key_column_index, app_column_index),
-        key_header_value=key_header_value,
-    )
-    filtered_entries = collect_entries_from_sheet(
-        rows=rows,
-        header_row=args.header_row,
-        key_column_index=key_column_index,
-        language_columns=language_columns,
-        app_column_index=app_column_index,
-        truthy_values=truthy_values,
-        app_true_only=True,
-        issue_log=issue_log,
-        sheet_name=sheet_label,
-    )
-    return languages, filtered_entries
-
-
-def collect_entries_from_inputs(
-    paths: List[Path],
-    args: argparse.Namespace,
-    output_spec: OutputSpec,
-    issue_log: Optional[IssueLog] = None,
-) -> Tuple[List[str], List[Tuple[str, Dict[str, str]]]]:
-    merged_entries: Dict[str, Dict[str, str]] = {}
-    languages: List[str] = []
-
-    for path in paths:
-        file_languages, file_entries = collect_entries_from_file(path, args, output_spec, issue_log)
-        languages = merge_language_lists(languages, file_languages)
-        merge_entries(merged_entries, file_entries, path.name, args.conflict_policy, issue_log)
-        print(
-            f'Collected {len(file_entries)} keys from file "{path.name}" '
-            f'for key source "{describe_output_spec(output_spec)}"'
-        )
-
-    if not merged_entries:
-        if output_spec.optional:
-            return languages, []
-        raise ValueError("No localization entries were collected from the provided Excel files.")
-
-    ordered_entries = sorted(merged_entries.items(), key=lambda item: item[0])
-    return languages, ordered_entries
 
 
 def describe_output_spec(output_spec: OutputSpec) -> str:
@@ -1324,40 +1596,50 @@ def describe_output_spec(output_spec: OutputSpec) -> str:
     return output_spec.table_name
 
 
+def handle_termination_signal(signum: int, frame: object) -> None:
+    # 让 macOS App 的“终止”按钮走可清理的取消路径。
+    raise KeyboardInterrupt
+
+
 def main() -> int:
     args = parse_args()
     issue_log = IssueLog()
     log_path = resolve_log_path(args.output, args.log_file)
+    progress: Optional[ConversionProgress] = None
+    signal.signal(signal.SIGTERM, handle_termination_signal)
 
     try:
         output_specs = build_output_specs(args)
-        merged_entries: Dict[str, Dict[str, str]] = {}
-        languages: List[str] = []
-
-        for output_spec in output_specs:
-            spec_languages, spec_entries = collect_entries_from_inputs(args.input, args, output_spec, issue_log)
-            languages = merge_language_lists(languages, spec_languages)
-            merge_entries(
-                merged_entries,
-                spec_entries,
-                describe_output_spec(output_spec),
-                args.conflict_policy,
-                issue_log,
-            )
-
-        if not merged_entries:
-            raise ValueError("No localization entries were collected from the provided Excel files.")
-
-        ordered_entries = sorted(merged_entries.items(), key=lambda item: item[0])
-        development_language = args.development_language or languages[0]
-        write_outputs(
-            output_dir=args.output,
-            table_name=args.table_name,
-            output_format=args.format,
-            languages=languages,
-            entries=ordered_entries,
-            development_language=development_language,
-        )
+        progress = ConversionProgress(args.input)
+        with tempfile.TemporaryDirectory(prefix="localization-workbench-conversion-") as temporary_directory:
+            entry_store = EntryStore(Path(temporary_directory), issue_log)
+            try:
+                languages = collect_entries_from_inputs_streamed(
+                    args.input,
+                    args,
+                    output_specs,
+                    issue_log,
+                    entry_store,
+                    progress,
+                )
+                development_language = args.development_language or languages[0]
+                write_outputs_streamed(
+                    output_dir=args.output,
+                    table_name=args.table_name,
+                    output_format=args.format,
+                    languages=languages,
+                    entry_store=entry_store,
+                    development_language=development_language,
+                    progress=progress,
+                )
+            finally:
+                entry_store.close()
+    except KeyboardInterrupt:
+        issue_log.add("INFO", "cancelled", "Conversion was cancelled by the user.")
+        issue_log.write(log_path)
+        print(f"Wrote {log_path}")
+        print("Conversion cancelled.")
+        return 130
     except Exception as error:
         issue_log.add("ERROR", "fatal", str(error))
         issue_log.write(log_path)
@@ -1367,6 +1649,8 @@ def main() -> int:
 
     issue_log.write(log_path)
     print(f"Wrote {log_path}")
+    if progress is not None:
+        progress.finish()
     return 0
 
 
