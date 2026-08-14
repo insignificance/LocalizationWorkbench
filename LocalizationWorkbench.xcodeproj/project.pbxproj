@@ -16,6 +16,7 @@
 		AA0000000000000000000007 /* Python in Resources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000018 /* Python */; };
 		AA0000000000000000000008 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000019 /* Assets.xcassets */; };
 		AA0000000000000000000009 /* README.md in Resources */ = {isa = PBXBuildFile; fileRef = AA000000000000000000001B /* README.md */; };
+		AA000000000000000000000A /* DestructionGuard.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000000000000000000001C /* DestructionGuard.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -30,6 +31,7 @@
 		AA0000000000000000000019 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		AA000000000000000000001A /* LocalizationWorkbench.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = LocalizationWorkbench.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		AA000000000000000000001B /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
+		AA000000000000000000001C /* DestructionGuard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DestructionGuard.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -60,6 +62,7 @@
 				AA0000000000000000000015 /* Workflow.swift */,
 				AA0000000000000000000016 /* WorkflowViews.swift */,
 				AA0000000000000000000011 /* AppSupport.swift */,
+				AA000000000000000000001C /* DestructionGuard.swift */,
 				AA0000000000000000000017 /* Info.plist */,
 				AA0000000000000000000033 /* Resources */,
 			);
@@ -161,6 +164,7 @@
 				AA0000000000000000000004 /* SharedViews.swift in Sources */,
 				AA0000000000000000000005 /* Workflow.swift in Sources */,
 				AA0000000000000000000006 /* WorkflowViews.swift in Sources */,
+				AA000000000000000000000A /* DestructionGuard.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -204,7 +208,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 13.0;
-				MARKETING_VERSION = 1.11;
+				MARKETING_VERSION = 1.12;
 				PRODUCT_BUNDLE_IDENTIFIER = local.tools.LocalizationWorkbenchXcode;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
@@ -232,7 +236,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 13.0;
-				MARKETING_VERSION = 1.11;
+				MARKETING_VERSION = 1.12;
 				PRODUCT_BUNDLE_IDENTIFIER = local.tools.LocalizationWorkbenchXcode;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
