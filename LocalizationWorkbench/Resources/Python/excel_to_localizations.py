@@ -20,6 +20,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Iterator, List, Optional, Tuple
 
+from locale_registry import load_locale_registry, normalize_locale_code
+
 
 NS = {
     "main": "http://schemas.openxmlformats.org/spreadsheetml/2006/main",
@@ -27,50 +29,8 @@ NS = {
     "office_rel": "http://schemas.openxmlformats.org/officeDocument/2006/relationships",
 }
 
-HEADER_LOCALE_ALIASES = {
-    "-英文": "en",
-    "英文": "en",
-    "EN": "en",
-    "English": "en",
-    "en": "en",
-    "中文": "zh-Hans",
-    "日文": "ja",
-    "日语": "ja",
-    "日本語": "ja",
-    "德语": "de",
-    "德文": "de",
-    "法语": "fr",
-    "加拿大法语": "fr-CA",
-    "意大利语": "it",
-    "西班牙语": "es",
-    "葡萄牙语": "pt-PT",
-    "荷兰语": "nl",
-    "波兰语": "pl",
-    "俄语": "ru",
-    "乌克兰语": "uk",
-    "韩语": "ko",
-    "韩文": "ko",
-    "丹麦语": "da",
-    "捷克语": "cs",
-    "土耳其语": "tr",
-    "瑞典语": "sv",
-}
-
-NON_LOCALE_HEADER_NAMES = {
-    "app",
-    "vision",
-    "remark",
-    "remarks",
-    "comment",
-    "comments",
-    "note",
-    "notes",
-    "备注",
-}
-
 DEFAULT_TRUE_VALUES = {"true", "1", "yes", "y"}
 ESCAPED_VALUE_PATTERN = re.compile(r'\\(?:[nrt"\'\\]|u[0-9a-fA-F]{4}|U[0-9a-fA-F]{8})')
-LOCALE_HEADER_GROUP_PATTERN = re.compile(r"^(?P<prefix>.+?)\s*[（(]\s*(?P<locale>[^()（）]+?)\s*[）)]$")
 KEY_HEADER_NAMES = {
     "devkey",
     "dev key",
@@ -85,6 +45,9 @@ DEFAULT_CHUNK_ROWS = 2_000
 SHARED_STRINGS_DISK_THRESHOLD_BYTES = 16 * 1024 * 1024
 ENTRY_STORE_MEMORY_LIMIT = 20_000
 MAX_RECORDED_ISSUES = 10_000
+
+
+_locale_registry = load_locale_registry()
 
 
 class IssueLog:
@@ -673,6 +636,11 @@ def parse_args() -> argparse.Namespace:
         help="Override the source language for .xcstrings. Defaults to the first language column.",
     )
     parser.add_argument(
+        "--locale-config",
+        type=Path,
+        help="Optional JSON file whose locale aliases are merged with the bundled registry.",
+    )
+    parser.add_argument(
         "--app-column",
         default="App",
         help="Header name of the app filter column. Default: App.",
@@ -814,59 +782,15 @@ def normalize_header_name(value: str) -> str:
 
 
 def normalize_language_code(value: str) -> str:
-    cleaned = value.strip().replace("_", "-")
-    if not cleaned:
-        raise ValueError("Language code cannot be empty.")
-
-    parts = cleaned.split("-")
-    if len(parts) == 1:
-        return parts[0].lower()
-
-    normalized = [parts[0].lower()]
-    for part in parts[1:]:
-        normalized.append(part.upper() if len(part) in (2, 3) else part)
-    return "-".join(normalized)
+    return normalize_locale_code(value)
 
 
 def locale_token_to_code(value: str) -> Optional[str]:
-    normalized = value.strip()
-    if not normalized:
-        return None
-    if normalized in HEADER_LOCALE_ALIASES:
-        return HEADER_LOCALE_ALIASES[normalized]
-
-    candidate = normalized.lstrip("-")
-    if candidate.lower() in NON_LOCALE_HEADER_NAMES:
-        return None
-    if re.fullmatch(r"[A-Za-z]{2,3}(?:[-_][A-Za-z0-9]{2,8})*", candidate):
-        if (
-            "-" not in candidate
-            and "_" not in candidate
-            and len(candidate) == 3
-            and not (candidate.islower() or candidate.isupper())
-        ):
-            return None
-        return normalize_language_code(candidate)
-    return None
+    return _locale_registry.resolve_token(value)
 
 
 def parse_locale_header(value: str) -> Optional[Tuple[str, str]]:
-    normalized = value.strip()
-    if not normalized:
-        return None
-
-    direct_locale = locale_token_to_code(normalized)
-    if direct_locale is not None:
-        return "", direct_locale
-
-    match = LOCALE_HEADER_GROUP_PATTERN.fullmatch(normalized)
-    if match is None:
-        return None
-
-    locale = locale_token_to_code(match.group("locale"))
-    if locale is None:
-        return None
-    return match.group("prefix").strip(), locale
+    return _locale_registry.parse_header(value)
 
 
 def header_to_locale(value: str) -> Optional[str]:
@@ -1601,6 +1525,12 @@ def handle_termination_signal(signum: int, frame: object) -> None:
     raise KeyboardInterrupt
 
 
+def configure_locale_registry(locale_config: Optional[Path]) -> None:
+    """在处理工作簿前载入用户追加的语言别名。"""
+    global _locale_registry
+    _locale_registry = load_locale_registry(locale_config)
+
+
 def main() -> int:
     args = parse_args()
     issue_log = IssueLog()
@@ -1609,6 +1539,7 @@ def main() -> int:
     signal.signal(signal.SIGTERM, handle_termination_signal)
 
     try:
+        configure_locale_registry(args.locale_config)
         output_specs = build_output_specs(args)
         progress = ConversionProgress(args.input)
         with tempfile.TemporaryDirectory(prefix="localization-workbench-conversion-") as temporary_directory:

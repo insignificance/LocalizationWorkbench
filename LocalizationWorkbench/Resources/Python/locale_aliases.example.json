@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "author": "Renogy_YX",
+  "locales": {
+    "sw": ["斯瓦希里语", "Swahili", "Kiswahili"],
+    "km": ["高棉语", "Khmer", "ភាសាខ្មែរ"],
+    "en": ["英文文案"]
+  },
+  "ignored_headers": ["业务线", "产品负责人"]
+}

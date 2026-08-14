@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import csv
 import re
+import sys
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from datetime import datetime
@@ -12,32 +13,12 @@ from typing import Iterable
 from zipfile import ZipFile
 import xml.etree.ElementTree as ET
 
+from locale_registry import LocaleRegistry, load_locale_registry
+
 
 NS = {
     "main": "http://schemas.openxmlformats.org/spreadsheetml/2006/main",
     "pkgrel": "http://schemas.openxmlformats.org/package/2006/relationships",
-}
-
-LANGUAGE_HEADERS = {
-    "英文",
-    "中文",
-    "日文",
-    "日语",
-    "土耳其语",
-    "捷克语",
-    "德语",
-    "丹麦语",
-    "西班牙语",
-    "法语",
-    "加拿大法语",
-    "意大利语",
-    "荷兰语",
-    "波兰语",
-    "俄语",
-    "乌克兰语",
-    "葡萄牙语",
-    "韩语",
-    "瑞典语",
 }
 
 KEY_HEADERS = {"Dev Key", "文案的key"}
@@ -89,6 +70,11 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=20,
         help="How many top rows to scan when locating the header row.",
+    )
+    parser.add_argument(
+        "--locale-config",
+        type=Path,
+        help="Optional JSON file whose locale aliases are merged with the bundled registry.",
     )
     return parser.parse_args()
 
@@ -186,19 +172,29 @@ class XlsxReader:
 
 
 def find_header_row(
-    rows: list[tuple[int, dict[str, str]]], search_limit: int
-) -> tuple[int, dict[str, str], str] | None:
+    rows: list[tuple[int, dict[str, str]]], search_limit: int, registry: LocaleRegistry
+) -> tuple[int, dict[str, str], str, str] | None:
     candidates = []
     for row_number, row in rows[:search_limit]:
-        english_cols = [col for col, value in row.items() if value == "英文"]
-        if not english_cols:
-            continue
-        lang_count = sum(1 for value in row.values() if value in LANGUAGE_HEADERS)
-        candidates.append((lang_count, row_number, row, english_cols[0]))
+        parsed_columns = {
+            column: parsed
+            for column, value in row.items()
+            if (parsed := registry.parse_header(value)) is not None
+        }
+        for english_col, (group_prefix, locale) in parsed_columns.items():
+            if locale != "en":
+                continue
+            normalized_group = group_prefix.casefold()
+            language_count = sum(
+                1
+                for other_prefix, other_locale in parsed_columns.values()
+                if other_prefix.casefold() == normalized_group and other_locale != "en"
+            )
+            candidates.append((language_count, row_number, row, english_col, group_prefix))
     if not candidates:
         return None
-    _, row_number, row, english_col = max(candidates, key=lambda item: (item[0], -item[1]))
-    return row_number, row, english_col
+    _, row_number, row, english_col, group_prefix = max(candidates, key=lambda item: (item[0], -item[1]))
+    return row_number, row, english_col, group_prefix
 
 
 def find_key_column(header_row: dict[str, str], english_col: str) -> str:
@@ -212,13 +208,24 @@ def find_key_column(header_row: dict[str, str], english_col: str) -> str:
     return left_side[0] if left_side else "A"
 
 
-def language_columns(header_row: dict[str, str], english_col: str) -> list[tuple[str, str]]:
+def language_columns(
+    header_row: dict[str, str], english_col: str, group_prefix: str, registry: LocaleRegistry
+) -> list[tuple[str, str]]:
     columns = []
+    seen_locales = set()
     for col, name in sorted(header_row.items(), key=lambda item: col_to_index(item[0])):
         if col == english_col:
             continue
-        if name in LANGUAGE_HEADERS and name != "英文":
-            columns.append((col, name))
+        parsed = registry.parse_header(name)
+        if parsed is None:
+            continue
+        locale_prefix, locale = parsed
+        if locale == "en" or locale_prefix.casefold() != group_prefix.casefold():
+            continue
+        if locale in seen_locales:
+            continue
+        seen_locales.add(locale)
+        columns.append((col, name))
     return columns
 
 
@@ -233,7 +240,9 @@ def marker_counts(text: str) -> Counter[str]:
     )
 
 
-def scan_workbook(path: Path, header_search_rows: int) -> tuple[list[Issue], dict[str, object]]:
+def scan_workbook(
+    path: Path, header_search_rows: int, registry: LocaleRegistry
+) -> tuple[list[Issue], dict[str, object]]:
     reader = XlsxReader(path)
     issues: list[Issue] = []
     sheets_scanned = []
@@ -245,14 +254,14 @@ def scan_workbook(path: Path, header_search_rows: int) -> tuple[list[Issue], dic
     try:
         for sheet in reader.sheets:
             rows = list(reader.iter_sheet_rows(sheet.target))
-            header = find_header_row(rows, header_search_rows)
+            header = find_header_row(rows, header_search_rows, registry)
             if not header:
                 sheets_without_english.append(sheet.name)
                 continue
 
-            header_row_number, header_row, english_col = header
+            header_row_number, header_row, english_col, group_prefix = header
             key_col = find_key_column(header_row, english_col)
-            lang_cols = language_columns(header_row, english_col)
+            lang_cols = language_columns(header_row, english_col, group_prefix, registry)
             sheets_scanned.append(
                 {
                     "sheet": sheet.name,
@@ -428,7 +437,12 @@ def main() -> int:
     output_md = Path(args.output_md).expanduser().resolve()
     output_csv = Path(args.output_csv).expanduser().resolve()
 
-    issues, summary = scan_workbook(workbook_path, args.header_search_rows)
+    try:
+        registry = load_locale_registry(args.locale_config)
+        issues, summary = scan_workbook(workbook_path, args.header_search_rows, registry)
+    except (OSError, ValueError) as error:
+        print(f"Error: {error}", file=sys.stderr)
+        return 1
     write_markdown(output_md, issues, summary)
     write_csv(output_csv, issues)
 
