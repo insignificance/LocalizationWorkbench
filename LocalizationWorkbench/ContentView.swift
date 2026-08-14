@@ -108,6 +108,8 @@ struct ContentView: View {
                 ExcelConversionView(selection: $selection)
             case .newlineCheck:
                 NewlineCheckView(selection: $selection)
+            case .languageAliasGuide:
+                LanguageAliasGuideView(selection: $selection)
             case .cleanStrings:
                 CleanStringsView(selection: $selection)
             case .migrateLocalizedLiterals:

@@ -231,8 +231,8 @@ struct HeroHeader: View {
                         .frame(maxWidth: 760, alignment: .leading)
 
                     HStack(spacing: 10) {
-                        CapsuleLabel(text: "本地执行", accent: workflow.tint, style: .outline)
-                        CapsuleLabel(text: "Python 驱动", accent: workflow.tint, style: .outline)
+                        CapsuleLabel(text: workflow.primaryBadge, accent: workflow.tint, style: .outline)
+                        CapsuleLabel(text: workflow.secondaryBadge, accent: workflow.tint, style: .outline)
                         CapsuleLabel(text: workflow.outputSummary, accent: workflow.tint, style: .outline)
                     }
                 }

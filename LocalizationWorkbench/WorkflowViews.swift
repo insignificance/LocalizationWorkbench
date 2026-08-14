@@ -5,6 +5,7 @@ private let xlsxType = UTType(filenameExtension: "xlsx") ?? .data
 private let stringsType = UTType(filenameExtension: "strings") ?? .plainText
 private let markdownType = UTType(filenameExtension: "md") ?? .plainText
 private let csvType = UTType(filenameExtension: "csv") ?? .commaSeparatedText
+private let jsonType = UTType(filenameExtension: "json") ?? .data
 
 private enum ExcelOutputFormat: String, CaseIterable, Identifiable {
     case strings
@@ -74,6 +75,8 @@ struct ExcelConversionView: View {
     @State private var headerRow = "1"
     @State private var keyColumn = "A"
     @State private var keyHeader = ""
+    @AppStorage("LocalizationWorkbench.ExcelConversion.localeConfigPath")
+    private var localeConfigPath = ""
     @AppStorage("LocalizationWorkbench.ExcelConversion.extraKeyHeader")
     private var extraKeyHeader = ""
     @AppStorage("LocalizationWorkbench.ExcelConversion.sheetName")
@@ -129,6 +132,7 @@ struct ExcelConversionView: View {
                     "工作簿比较复杂时，优先使用“扫描整个工作簿并只处理带 App 列的 sheet”。",
                     "如果不同文件里有重名 key，建议先用“保留首次值”避免意外覆盖。",
                     "遇到 `名称（英文）` / `排障建议（英文）` 这种双翻译分组时，优先填写 Key 表头而不是只填列字母。",
+                    "表头可直接使用标准 Locale（如 `ar`、`zh-Hant`），也可以通过 JSON 配置补充业务别名。",
                     "如果只是初始化 String Catalog，可以直接导出双格式，后续再在 Xcode 里继续维护。",
                     "大型工作簿会自动按行流式分块处理；运行时可在控制台查看实时进度并随时终止。",
                 ]
@@ -183,6 +187,26 @@ struct ExcelConversionView: View {
                         allowedTypes: [.plainText]
                     ) ?? logFile
                 }
+
+                PathField(
+                    title: "语言别名配置（可选）",
+                    prompt: "/path/to/locale_aliases.json",
+                    text: $localeConfigPath,
+                    browseLabel: "选择 JSON"
+                ) {
+                    localeConfigPath = OpenPanelHelper.chooseFile(
+                        title: "选择语言别名 JSON 配置",
+                        allowedTypes: [jsonType]
+                    ) ?? localeConfigPath
+                }
+
+                Button {
+                    selection = .languageAliasGuide
+                } label: {
+                    Label("查看语言别名说明", systemImage: "book.closed")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
             }
 
             SectionCard(
@@ -434,6 +458,13 @@ struct ExcelConversionView: View {
         if !logFile.trimmed.isEmpty {
             args += ["--log-file", UserPath.normalize(logFile)]
         }
+        if !localeConfigPath.trimmed.isEmpty {
+            guard UserPath.isFile(localeConfigPath) else {
+                runner.presentSetupError("语言别名配置不存在或不是文件：\(UserPath.normalize(localeConfigPath))")
+                return
+            }
+            args += ["--locale-config", UserPath.normalize(localeConfigPath)]
+        }
 
         let workingDirectory = URL(fileURLWithPath: normalizedOutputDirectory)
 
@@ -460,6 +491,8 @@ struct NewlineCheckView: View {
     @State private var outputMarkdown = ""
     @State private var outputCSV = ""
     @State private var headerSearchRows = "20"
+    @AppStorage("LocalizationWorkbench.NewlineCheck.localeConfigPath")
+    private var localeConfigPath = ""
 
     private var canRun: Bool {
         !workbookPath.trimmed.isEmpty &&
@@ -494,6 +527,7 @@ struct NewlineCheckView: View {
                 tips: [
                     "英文列含有显式 \\n 时，翻译列需要保留同样数量的 \\n。",
                     "英文列只有实际换行时，翻译列可以是实际换行或转义后的 \\n，但总数要匹配。",
+                    "语言列识别与转换流程共用同一份别名配置，避免新增语言后漏检。",
                     "这个流程适合在导出资源前先清一遍 Excel 质量问题。",
                 ]
             )
@@ -556,6 +590,26 @@ struct NewlineCheckView: View {
                         .textFieldStyle(.roundedBorder)
                         .font(.system(.body, design: .monospaced))
                 }
+
+                PathField(
+                    title: "语言别名配置（可选）",
+                    prompt: "/path/to/locale_aliases.json",
+                    text: $localeConfigPath,
+                    browseLabel: "选择 JSON"
+                ) {
+                    localeConfigPath = OpenPanelHelper.chooseFile(
+                        title: "选择语言别名 JSON 配置",
+                        allowedTypes: [jsonType]
+                    ) ?? localeConfigPath
+                }
+
+                Button {
+                    selection = .languageAliasGuide
+                } label: {
+                    Label("查看语言别名说明", systemImage: "book.closed")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
             }
         }
         .safeAreaInset(edge: .bottom) {
@@ -604,12 +658,19 @@ struct NewlineCheckView: View {
 
         let workbookURL = UserPath.url(from: workbookPath)
         let workingDirectory = workbookURL?.deletingLastPathComponent()
-        let args = [
+        var args = [
             UserPath.normalize(workbookPath),
             "--output-md", UserPath.normalize(outputMarkdown),
             "--output-csv", UserPath.normalize(outputCSV),
             "--header-search-rows", headerSearchRows.trimmedOr("20"),
         ]
+        if !localeConfigPath.trimmed.isEmpty {
+            guard UserPath.isFile(localeConfigPath) else {
+                runner.presentSetupError("语言别名配置不存在或不是文件：\(UserPath.normalize(localeConfigPath))")
+                return
+            }
+            args += ["--locale-config", UserPath.normalize(localeConfigPath)]
+        }
 
         do {
             let request = try PythonBridge.request(
@@ -621,6 +682,251 @@ struct NewlineCheckView: View {
         } catch {
             runner.presentSetupError(error.localizedDescription)
         }
+    }
+}
+
+struct LanguageAliasGuideView: View {
+    private let workflow = Workflow.languageAliasGuide
+    @Binding var selection: Workflow?
+
+    private let configurationExample = """
+    {
+      "locales": {
+        "sw": ["斯瓦希里语", "Swahili", "Kiswahili"],
+        "en": ["英文文案"]
+      },
+      "ignored_headers": ["业务线"]
+    }
+    """
+
+    private var metrics: [WorkflowMetric] {
+        [
+            WorkflowMetric(title: "Built-in", value: "37", caption: "内置语言或地区 Locale"),
+            WorkflowMetric(title: "Inputs", value: "3", caption: "别名、标准代码、分组表头"),
+            WorkflowMetric(title: "Extension", value: "JSON", caption: "可叠加团队业务别名"),
+        ]
+    }
+
+    var body: some View {
+        WorkflowPage(workflow: workflow, selection: $selection, metrics: metrics) {
+            SectionCard(
+                title: "快速入口",
+                subtitle: "配置完成后可直接返回对应工作流。",
+                accent: workflow.tint
+            ) {
+                VStack(alignment: .leading, spacing: 10) {
+                    Button {
+                        selection = .excelConversion
+                    } label: {
+                        Label("前往 Excel 转本地化", systemImage: "tablecells.badge.ellipsis")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(workflow.tint)
+
+                    Button {
+                        selection = .newlineCheck
+                    } label: {
+                        Label("前往换行一致性检查", systemImage: "text.line.first.and.arrowtriangle.forward")
+                    }
+                    .buttonStyle(.bordered)
+                }
+            }
+
+            TipsCard(
+                title: "使用提醒",
+                accent: workflow.tint,
+                tips: [
+                    "优先直接使用标准 Locale，例如 ar、vi、zh-Hant、pt-BR。",
+                    "只有团队自定义的表头名称才需要写入外部 JSON。",
+                    "转换与换行检查需分别选择同一份外部 JSON，才能保持结果一致。",
+                ]
+            )
+        } content: {
+            SectionCard(
+                title: "表头识别顺序",
+                subtitle: "识别失败的列不会参与转换或换行检查。",
+                accent: workflow.tint
+            ) {
+                VStack(spacing: 10) {
+                    LanguageAliasRuleRow(
+                        number: "1",
+                        title: "规范化表头",
+                        detail: "忽略首尾空白、大小写、全半角与表头中的空白差异。",
+                        accent: workflow.tint
+                    )
+                    LanguageAliasRuleRow(
+                        number: "2",
+                        title: "匹配别名",
+                        detail: "先匹配内置 37 个 Locale 的别名，再匹配选择的外部 JSON。",
+                        accent: workflow.tint
+                    )
+                    LanguageAliasRuleRow(
+                        number: "3",
+                        title: "解析标准代码",
+                        detail: "未命中别名时，继续尝试 ar、vi、zh-Hant、pt-BR 等标准 Locale。",
+                        accent: workflow.tint
+                    )
+                    LanguageAliasRuleRow(
+                        number: "4",
+                        title: "识别翻译分组",
+                        detail: "名称（阿拉伯语）会解析为“名称”分组下的 ar 语言列。",
+                        accent: workflow.tint
+                    )
+                }
+            }
+
+            SectionCard(
+                title: "常用表头写法",
+                subtitle: "下列写法会输出相同的 Locale。",
+                accent: workflow.tint
+            ) {
+                LazyVGrid(
+                    columns: [GridItem(.flexible(minimum: 180)), GridItem(.flexible(minimum: 180))],
+                    alignment: .leading,
+                    spacing: 10
+                ) {
+                    LanguageAliasExampleCard(header: "阿拉伯语 / Arabic / ar", locale: "ar")
+                    LanguageAliasExampleCard(header: "繁体中文 / zh-Hant", locale: "zh-Hant")
+                    LanguageAliasExampleCard(header: "巴西葡萄牙语 / pt-BR", locale: "pt-BR")
+                    LanguageAliasExampleCard(header: "名称（阿拉伯语）", locale: "名称 + ar")
+                }
+            }
+
+            SectionCard(
+                title: "外部 JSON 别名配置",
+                subtitle: "仅补充业务别名；外部配置会叠加内置配置，不会清空默认语言。",
+                accent: workflow.tint
+            ) {
+                LanguageAliasCodeBlock(code: configurationExample)
+
+                Text("locales 的 key 是输出 Locale，数组内填写 Excel 可识别的别名。ignored_headers 可排除业务线、备注等元数据表头。")
+                    .font(.system(size: 12, weight: .medium, design: .serif))
+                    .foregroundStyle(Color.black.opacity(0.62))
+
+                Text("同一个别名不能映射到两个不同 Locale；发生冲突时脚本会停止并提示。")
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .foregroundStyle(Color.orange.opacity(0.9))
+            }
+
+            SectionCard(
+                title: "多翻译分组与换行检查",
+                subtitle: "一张 Excel 有多套文案时，可把语言写进括号。",
+                accent: workflow.tint
+            ) {
+                LanguageAliasCodeBlock(
+                    code: "AppDevKey | 名称（英文） | 名称（中文） | 排障建议（英文） | 排障建议（中文）"
+                )
+
+                VStack(alignment: .leading, spacing: 7) {
+                    Text("• AppDevKey 默认优先使用“名称”分组。")
+                    Text("• AppDevKey（排障建议）会使用“排障建议”分组。")
+                    Text("• 换行检查以同一分组的英文 / en 列为基线。")
+                }
+                .font(.system(size: 12, weight: .medium, design: .serif))
+                .foregroundStyle(Color.black.opacity(0.64))
+            }
+
+            SectionCard(
+                title: "常见问题",
+                subtitle: "新增语言后，优先从表头和 JSON 两处排查。",
+                accent: workflow.tint
+            ) {
+                VStack(alignment: .leading, spacing: 12) {
+                    LanguageAliasQuestionRow(
+                        question: "没有识别到语言列？",
+                        answer: "改用内置别名、标准 Locale，或把当前表头名称加入外部 JSON。"
+                    )
+                    LanguageAliasQuestionRow(
+                        question: "转换正常但换行检查没有覆盖？",
+                        answer: "在“换行一致性检查”中也选择同一份外部 JSON。"
+                    )
+                    LanguageAliasQuestionRow(
+                        question: "直接写标准代码是否一定可用？",
+                        answer: "脚本会生成资源，但仍应在目标 Apple App 中验证对应 Locale 是否正确加载。"
+                    )
+                }
+            }
+        }
+    }
+}
+
+private struct LanguageAliasRuleRow: View {
+    let number: String
+    let title: String
+    let detail: String
+    let accent: Color
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Text(number)
+                .font(.system(size: 11, weight: .bold, design: .rounded))
+                .foregroundStyle(Color.white)
+                .frame(width: 24, height: 24)
+                .background(accent, in: Circle())
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .foregroundStyle(Color.black.opacity(0.8))
+                Text(detail)
+                    .font(.system(size: 11, weight: .medium, design: .serif))
+                    .foregroundStyle(Color.black.opacity(0.58))
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(11)
+        .background(Color.black.opacity(0.035), in: RoundedRectangle(cornerRadius: 16))
+    }
+}
+
+private struct LanguageAliasExampleCard: View {
+    let header: String
+    let locale: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(header)
+                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                .foregroundStyle(Color.black.opacity(0.64))
+            Text(locale)
+                .font(.system(size: 14, weight: .bold, design: .rounded))
+                .foregroundStyle(Color.black.opacity(0.82))
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.black.opacity(0.035), in: RoundedRectangle(cornerRadius: 16))
+    }
+}
+
+private struct LanguageAliasCodeBlock: View {
+    let code: String
+
+    var body: some View {
+        Text(code)
+            .font(.system(size: 11, weight: .regular, design: .monospaced))
+            .foregroundStyle(Color.black.opacity(0.72))
+            .textSelection(.enabled)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(12)
+            .background(Color.black.opacity(0.055), in: RoundedRectangle(cornerRadius: 16))
+    }
+}
+
+private struct LanguageAliasQuestionRow: View {
+    let question: String
+    let answer: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(question)
+                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                .foregroundStyle(Color.black.opacity(0.8))
+            Text(answer)
+                .font(.system(size: 11, weight: .medium, design: .serif))
+                .foregroundStyle(Color.black.opacity(0.58))
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 

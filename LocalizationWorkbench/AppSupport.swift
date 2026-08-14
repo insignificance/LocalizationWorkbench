@@ -86,6 +86,17 @@ enum UserPath {
         return exists && isDirectory.boolValue
     }
 
+    static func isFile(_ rawValue: String) -> Bool {
+        let normalized = normalize(rawValue)
+        guard !normalized.isEmpty else {
+            return false
+        }
+
+        var isDirectory: ObjCBool = false
+        let exists = FileManager.default.fileExists(atPath: normalized, isDirectory: &isDirectory)
+        return exists && !isDirectory.boolValue
+    }
+
     static func lastComponent(_ rawValue: String) -> String {
         let normalized = normalize(rawValue)
         guard !normalized.isEmpty else {
