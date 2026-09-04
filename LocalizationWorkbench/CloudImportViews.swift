@@ -15,6 +15,10 @@ struct CloudImportSection: View {
     @ObservedObject var downloadCoordinator: CloudDownloadCoordinator
     @Binding var downloadDirectory: String
     let didImport: ([String]) -> Void
+    let didImportAndConvert: ([String]) -> Void
+    let didImportAndMerge: ([String]) -> Void
+    let canRunImportedFiles: Bool
+    let canMergeImportedFiles: Bool
 
     @State private var isShowingCloudImportSheet = false
 
@@ -29,45 +33,89 @@ struct CloudImportSection: View {
         }
     }
 
+    private var canDownloadSavedSources: Bool {
+        !sourceStore.sources.isEmpty &&
+            !downloadCoordinator.isDownloading &&
+            connectionStore.isConnected
+    }
+
     var body: some View {
         SectionCard(
             title: "云端 Excel",
             subtitle: "钉钉链接会经由每位用户自己的 MCP 连接导出为 Excel，再自动加入当前转换任务。",
             accent: accent
         ) {
-            HStack(alignment: .center, spacing: 14) {
-                Image(systemName: connectionStore.isConnected ? "checkmark.icloud.fill" : "icloud.slash")
-                    .font(.system(size: 20, weight: .semibold))
-                    .foregroundStyle(connectionTint)
-                    .frame(width: 36, height: 36)
-                    .background(connectionTint.opacity(0.12), in: RoundedRectangle(cornerRadius: 11))
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .center, spacing: 14) {
+                    Image(systemName: connectionStore.isConnected ? "checkmark.icloud.fill" : "icloud.slash")
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundStyle(connectionTint)
+                        .frame(width: 36, height: 36)
+                        .background(connectionTint.opacity(0.12), in: RoundedRectangle(cornerRadius: 11))
 
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("钉钉 MCP：\(connectionStore.statusTitle)")
-                        .font(.system(size: 13, weight: .semibold, design: .rounded))
-                        .foregroundStyle(AppTheme.primaryText)
-                    Text(connectionStore.statusDetail)
-                        .font(.system(size: 11, weight: .medium, design: .serif))
-                        .foregroundStyle(AppTheme.secondaryText)
-                        .lineLimit(2)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("钉钉 MCP：\(connectionStore.statusTitle)")
+                            .font(.system(size: 13, weight: .semibold, design: .rounded))
+                            .foregroundStyle(AppTheme.primaryText)
+                        Text(connectionStore.statusDetail)
+                            .font(.system(size: 11, weight: .medium, design: .serif))
+                            .foregroundStyle(AppTheme.secondaryText)
+                            .lineLimit(2)
+                    }
+
+                    Spacer(minLength: 12)
+
+                    VStack(alignment: .trailing, spacing: 4) {
+                        Text("\(sourceStore.sources.count) 个已保存链接")
+                            .font(.system(size: 12, weight: .bold, design: .rounded))
+                            .foregroundStyle(AppTheme.primaryText)
+                        Text("支持勾选多个链接批量下载")
+                            .font(.system(size: 10, weight: .medium, design: .serif))
+                            .foregroundStyle(AppTheme.tertiaryText)
+                    }
+
+                    Button("管理云端链接") {
+                        isShowingCloudImportSheet = true
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(accent)
                 }
 
-                Spacer(minLength: 12)
+                if !sourceStore.sources.isEmpty {
+                    Divider()
 
-                VStack(alignment: .trailing, spacing: 4) {
-                    Text("\(sourceStore.sources.count) 个已保存链接")
-                        .font(.system(size: 12, weight: .bold, design: .rounded))
-                        .foregroundStyle(AppTheme.primaryText)
-                    Text("支持勾选多个链接批量下载")
-                        .font(.system(size: 10, weight: .medium, design: .serif))
-                        .foregroundStyle(AppTheme.tertiaryText)
-                }
+                    HStack(spacing: 10) {
+                        Text("快捷操作会处理全部 \(sourceStore.sources.count) 个已保存链接")
+                            .font(.system(size: 11, weight: .medium, design: .serif))
+                            .foregroundStyle(AppTheme.secondaryText)
 
-                Button("管理云端链接") {
-                    isShowingCloudImportSheet = true
+                        Spacer(minLength: 8)
+
+                        Button {
+                            startDownloadAllAndConvert()
+                        } label: {
+                            Label("下载并一键转换", systemImage: "arrow.down.to.line.compact")
+                        }
+                        .buttonStyle(.bordered)
+                        .tint(.blue)
+                        .help("下载全部已保存链接，完成后自动开始转换")
+                        .disabled(!canDownloadSavedSources || !canRunImportedFiles)
+
+                        Button {
+                            startDownloadAllAndMerge()
+                        } label: {
+                            Label("下载并合并到项目", systemImage: "arrow.triangle.merge")
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(accent)
+                        .help(
+                            canMergeImportedFiles
+                                ? "下载全部已保存链接，转换后合并到项目翻译资源目录"
+                                : "请先选择有效的项目翻译资源目录"
+                        )
+                        .disabled(!canDownloadSavedSources || !canMergeImportedFiles)
+                    }
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(accent)
             }
         }
         .sheet(isPresented: $isShowingCloudImportSheet) {
@@ -76,7 +124,9 @@ struct CloudImportSection: View {
                 connectionStore: connectionStore,
                 downloadCoordinator: downloadCoordinator,
                 downloadDirectory: $downloadDirectory,
-                didImport: didImport
+                didImport: didImport,
+                didImportAndConvert: didImportAndConvert,
+                canRunImportedFiles: canRunImportedFiles
             )
         }
         .onAppear {
@@ -84,6 +134,26 @@ struct CloudImportSection: View {
                 downloadDirectory = CloudDownloadLocation.defaultDirectoryPath
             }
         }
+    }
+
+    private func startDownloadAllAndConvert() {
+        startDownloadAll(onImported: didImportAndConvert)
+    }
+
+    private func startDownloadAllAndMerge() {
+        startDownloadAll(onImported: didImportAndMerge)
+    }
+
+    private func startDownloadAll(onImported: @escaping ([String]) -> Void) {
+        if downloadDirectory.cloudImportTrimmed.isEmpty {
+            downloadDirectory = CloudDownloadLocation.defaultDirectoryPath
+        }
+        downloadCoordinator.download(
+            sources: sourceStore.sources,
+            destinationPath: downloadDirectory,
+            connectionStore: connectionStore,
+            onImported: onImported
+        )
     }
 }
 
@@ -95,6 +165,8 @@ struct CloudImportSheet: View {
     @ObservedObject var downloadCoordinator: CloudDownloadCoordinator
     @Binding var downloadDirectory: String
     let didImport: ([String]) -> Void
+    let didImportAndConvert: ([String]) -> Void
+    let canRunImportedFiles: Bool
 
     @State private var selectedSourceIDs = Set<UUID>()
     @State private var isShowingConnectionSheet = false
@@ -103,6 +175,12 @@ struct CloudImportSheet: View {
 
     private var selectedSources: [CloudWorkbookSource] {
         sourceStore.sources.filter { selectedSourceIDs.contains($0.id) }
+    }
+
+    private var canDownloadSelectedSources: Bool {
+        !selectedSources.isEmpty &&
+            !downloadCoordinator.isDownloading &&
+            connectionStore.isConnected
     }
 
     var body: some View {
@@ -160,6 +238,14 @@ struct CloudImportSheet: View {
                 selectedSourceIDs.insert(updatedSource.id)
             }
         }
+        .overlay {
+            if downloadCoordinator.isDownloading {
+                CloudDownloadLoadingHub(downloadCoordinator: downloadCoordinator, accent: .blue)
+                    .transition(.opacity.combined(with: .scale(scale: 0.96)))
+                    .zIndex(1)
+            }
+        }
+        .animation(.easeInOut(duration: 0.2), value: downloadCoordinator.isDownloading)
     }
 
     private var header: some View {
@@ -286,7 +372,7 @@ struct CloudImportSheet: View {
                     .font(.system(size: 12, weight: .medium, design: .serif))
                     .foregroundStyle(AppTheme.secondaryText)
             } else {
-                Text("会保留已成功下载的文件；失败的链接可单独重试。")
+                Text("同名云端工作簿会覆盖旧下载文件；其他已下载工作簿会保留。")
                     .font(.system(size: 11, weight: .medium, design: .serif))
                     .foregroundStyle(AppTheme.tertiaryText)
             }
@@ -304,18 +390,27 @@ struct CloudImportSheet: View {
                 startDownload()
             } label: {
                 Label(
-                    "下载选中的 \(selectedSources.count) 个链接",
+                    "仅下载 \(selectedSources.count) 个链接",
                     systemImage: "arrow.down.circle.fill"
                 )
-                .frame(minWidth: 170)
+                .frame(minWidth: 155)
+            }
+            .buttonStyle(.bordered)
+            .tint(.blue)
+            .disabled(!canDownloadSelectedSources)
+
+            Button {
+                startDownloadAndConvert()
+            } label: {
+                Label(
+                    "下载并一键转换",
+                    systemImage: "arrow.down.to.line.compact"
+                )
+                .frame(minWidth: 155)
             }
             .buttonStyle(.borderedProminent)
             .tint(.blue)
-            .disabled(
-                selectedSources.isEmpty ||
-                    downloadCoordinator.isDownloading ||
-                    !connectionStore.isConnected
-            )
+            .disabled(!canDownloadSelectedSources || !canRunImportedFiles)
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 14)
@@ -344,6 +439,14 @@ struct CloudImportSheet: View {
     }
 
     private func startDownload() {
+        startDownload(thenConvert: false)
+    }
+
+    private func startDownloadAndConvert() {
+        startDownload(thenConvert: true)
+    }
+
+    private func startDownload(thenConvert: Bool) {
         if downloadDirectory.cloudImportTrimmed.isEmpty {
             downloadDirectory = CloudDownloadLocation.defaultDirectoryPath
         }
@@ -351,8 +454,124 @@ struct CloudImportSheet: View {
             sources: selectedSources,
             destinationPath: downloadDirectory,
             connectionStore: connectionStore,
-            onImported: didImport
+            onImported: { files in
+                if thenConvert {
+                    didImportAndConvert(files)
+                } else {
+                    didImport(files)
+                }
+            }
         )
+    }
+}
+
+struct CloudDownloadLoadingHub: View {
+    @ObservedObject var downloadCoordinator: CloudDownloadCoordinator
+    let accent: Color
+
+    @State private var isOrbiting = false
+
+    private var statusDetail: String {
+        if downloadCoordinator.isCancelling {
+            return "正在取消当前下载，请稍候…"
+        }
+        return downloadCoordinator.activeStatus?.detail ?? "正在准备云端下载任务…"
+    }
+
+    private var progressText: String {
+        let total = downloadCoordinator.totalSourceCount
+        guard total > 0 else {
+            return "正在准备下载任务"
+        }
+        return "已处理 \(downloadCoordinator.completedSourceCount) / \(total) 个链接"
+    }
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.32)
+                .ignoresSafeArea()
+                .contentShape(Rectangle())
+                .onTapGesture {}
+
+            VStack(spacing: 18) {
+                ZStack {
+                    Circle()
+                        .fill(accent.opacity(0.13))
+                        .frame(width: 92, height: 92)
+
+                    Circle()
+                        .trim(from: 0.08, to: 0.78)
+                        .stroke(
+                            AngularGradient(
+                                colors: [accent.opacity(0.24), accent, .cyan.opacity(0.82), accent.opacity(0.24)],
+                                center: .center
+                            ),
+                            style: StrokeStyle(lineWidth: 5, lineCap: .round)
+                        )
+                        .frame(width: 76, height: 76)
+                        .rotationEffect(.degrees(isOrbiting ? 360 : 0))
+                        .animation(
+                            .linear(duration: 1.18).repeatForever(autoreverses: false),
+                            value: isOrbiting
+                        )
+
+                    Image(systemName: "icloud.and.arrow.down.fill")
+                        .font(.system(size: 26, weight: .semibold))
+                        .foregroundStyle(accent)
+                }
+
+                VStack(spacing: 7) {
+                    Text("正在下载云端 Excel")
+                        .font(.system(size: 18, weight: .bold, design: .rounded))
+                        .foregroundStyle(AppTheme.primaryText)
+
+                    Text(statusDetail)
+                        .font(.system(size: 12, weight: .medium, design: .serif))
+                        .foregroundStyle(AppTheme.secondaryText)
+                        .multilineTextAlignment(.center)
+                        .lineLimit(2)
+
+                    Text(progressText)
+                        .font(.system(size: 11, weight: .semibold, design: .rounded))
+                        .foregroundStyle(accent)
+                }
+
+                ProgressView()
+                    .controlSize(.small)
+                    .tint(accent)
+
+                Divider()
+
+                Button {
+                    downloadCoordinator.cancel()
+                } label: {
+                    Label(
+                        downloadCoordinator.isCancelling ? "正在取消…" : "取消下载",
+                        systemImage: "xmark"
+                    )
+                    .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .tint(.red)
+                .disabled(downloadCoordinator.isCancelling)
+            }
+            .padding(28)
+            .frame(width: 360)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 26, style: .continuous)
+                    .stroke(accent.opacity(0.32), lineWidth: 1)
+            )
+            .shadow(color: Color.black.opacity(0.28), radius: 28, x: 0, y: 15)
+        }
+        .onAppear {
+            isOrbiting = true
+        }
+        .onDisappear {
+            isOrbiting = false
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("正在下载云端 Excel")
     }
 }
 

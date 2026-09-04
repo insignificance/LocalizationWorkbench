@@ -64,6 +64,7 @@ private enum MissingCommentFallback: String, CaseIterable, Identifiable {
 struct ExcelConversionView: View {
     private let workflow = Workflow.excelConversion
     @Binding var selection: Workflow?
+    @EnvironmentObject private var projectRootStore: ProjectRootStore
 
     @StateObject private var runner = ProcessRunner()
     @StateObject private var cloudSourceStore = CloudWorkbookSourceStore()
@@ -72,7 +73,7 @@ struct ExcelConversionView: View {
 
     @State private var inputFiles: [String] = []
     @State private var outputDirectory = ""
-    @State private var format: ExcelOutputFormat = .both
+    @State private var format: ExcelOutputFormat = .strings
     @State private var tableName = "Localizable"
     @State private var developmentLanguage = ""
     @State private var headerRow = "1"
@@ -96,11 +97,17 @@ struct ExcelConversionView: View {
     private var allSheetsWithApp = false
     @AppStorage("LocalizationWorkbench.CloudImport.downloadDirectory")
     private var cloudDownloadDirectory = ""
+    @AppStorage("LocalizationWorkbench.ExcelConversion.projectLocalizationDirectory")
+    private var projectLocalizationDirectory = ""
     @State private var conflictPolicy: ExcelConflictPolicy = .keepFirst
     @State private var logFile = ""
 
     private var canRun: Bool {
         !inputFiles.isEmpty && !outputDirectory.trimmed.isEmpty && !runner.isRunning
+    }
+
+    private var canMergeImportedFiles: Bool {
+        !runner.isRunning && UserPath.isDirectory(projectLocalizationDirectory)
     }
 
     private var metrics: [WorkflowMetric] {
@@ -150,10 +157,19 @@ struct ExcelConversionView: View {
                 sourceStore: cloudSourceStore,
                 connectionStore: dingTalkConnectionStore,
                 downloadCoordinator: cloudDownloadCoordinator,
-                downloadDirectory: $cloudDownloadDirectory
-            ) { downloadedFiles in
-                appendInputFiles(downloadedFiles)
-            }
+                downloadDirectory: $cloudDownloadDirectory,
+                didImport: { downloadedFiles in
+                    appendInputFiles(downloadedFiles)
+                },
+                didImportAndConvert: { downloadedFiles in
+                    importAndConvertDownloadedFiles(downloadedFiles)
+                },
+                didImportAndMerge: { downloadedFiles in
+                    importAndMergeDownloadedFiles(downloadedFiles)
+                },
+                canRunImportedFiles: !runner.isRunning,
+                canMergeImportedFiles: canMergeImportedFiles
+            )
 
             SectionCard(
                 title: "输入与输出",
@@ -185,6 +201,21 @@ struct ExcelConversionView: View {
                 ) {
                     outputDirectory = OpenPanelHelper.chooseDirectory(title: "选择输出目录") ?? outputDirectory
                 }
+
+                PathField(
+                    title: "项目翻译资源目录（用于一键合并）",
+                    prompt: "/path/to/Localizables",
+                    text: $projectLocalizationDirectory,
+                    browseLabel: "选择目录"
+                ) {
+                    projectLocalizationDirectory = OpenPanelHelper.chooseDirectory(
+                        title: "选择项目翻译资源目录"
+                    ) ?? projectLocalizationDirectory
+                }
+
+                Text("选择包含 `en.lproj`、`zh-Hans.lproj` 等目录的资源根目录。合并时，同 key 的云端译文会更新，项目中其他 key 会保留。")
+                    .font(.system(size: 11, weight: .medium, design: .serif))
+                    .foregroundStyle(AppTheme.secondaryText)
 
                 PathField(
                     title: "日志文件",
@@ -380,6 +411,12 @@ struct ExcelConversionView: View {
                     .foregroundStyle(AppTheme.secondaryText)
             }
         }
+        .onAppear {
+            seedProjectLocalizationDirectoryIfNeeded()
+        }
+        .onChange(of: projectRootStore.path) { _ in
+            seedProjectLocalizationDirectoryIfNeeded()
+        }
         .safeAreaInset(edge: .bottom) {
             FloatingExecutionDock(
                 accent: workflow.tint,
@@ -399,6 +436,17 @@ struct ExcelConversionView: View {
                 ]
             )
         }
+        .overlay {
+            if cloudDownloadCoordinator.isDownloading {
+                CloudDownloadLoadingHub(
+                    downloadCoordinator: cloudDownloadCoordinator,
+                    accent: workflow.tint
+                )
+                .transition(.opacity.combined(with: .scale(scale: 0.96)))
+                .zIndex(1)
+            }
+        }
+        .animation(.easeInOut(duration: 0.2), value: cloudDownloadCoordinator.isDownloading)
     }
 
     private func appendInputFiles(_ files: [String]) {
@@ -414,9 +462,46 @@ struct ExcelConversionView: View {
         }
     }
 
+    private func importAndConvertDownloadedFiles(_ downloadedFiles: [String]) {
+        let filesToConvert = UserPath.deduplicated(downloadedFiles)
+        guard !filesToConvert.isEmpty else {
+            runner.presentSetupError("没有可转换的云端 Excel 文件。")
+            return
+        }
+
+        appendInputFiles(filesToConvert)
+        run(with: filesToConvert)
+    }
+
+    private func importAndMergeDownloadedFiles(_ downloadedFiles: [String]) {
+        let filesToConvert = UserPath.deduplicated(downloadedFiles)
+        guard !filesToConvert.isEmpty else {
+            runner.presentSetupError("没有可转换的云端 Excel 文件。")
+            return
+        }
+
+        let mergeDirectory = UserPath.normalize(projectLocalizationDirectory)
+        guard UserPath.isDirectory(mergeDirectory) else {
+            runner.presentSetupError("请先选择有效的项目翻译资源目录。")
+            return
+        }
+
+        appendInputFiles(filesToConvert)
+        run(with: filesToConvert, mergeInto: mergeDirectory)
+    }
+
     private func run() {
-        guard !inputFiles.isEmpty else {
+        run(with: inputFiles)
+    }
+
+    private func run(with files: [String], mergeInto: String? = nil) {
+        let filesToConvert = UserPath.deduplicated(files)
+        guard !filesToConvert.isEmpty else {
             runner.presentSetupError("请至少选择一个 Excel 文件。")
+            return
+        }
+        guard !runner.isRunning else {
+            runner.presentSetupError("当前已有转换任务正在执行，请完成后再启动新的转换。")
             return
         }
         guard !outputDirectory.trimmed.isEmpty else {
@@ -424,7 +509,22 @@ struct ExcelConversionView: View {
             return
         }
 
+        let normalizedMergeDirectory = mergeInto.map(UserPath.normalize).flatMap { value in
+            value.isEmpty ? nil : value
+        }
+        if let normalizedMergeDirectory, !UserPath.isDirectory(normalizedMergeDirectory) {
+            runner.presentSetupError("项目翻译资源目录不存在或不是目录：\(normalizedMergeDirectory)")
+            return
+        }
+
         let normalizedOutputDirectory = UserPath.normalize(outputDirectory)
+        if let normalizedMergeDirectory,
+           URL(fileURLWithPath: normalizedOutputDirectory).standardizedFileURL ==
+               URL(fileURLWithPath: normalizedMergeDirectory).standardizedFileURL
+        {
+            runner.presentSetupError("输出目录不能与项目翻译资源目录相同，请选择单独的转换输出目录。")
+            return
+        }
         var isDirectory: ObjCBool = false
         let outputExists = FileManager.default.fileExists(
             atPath: normalizedOutputDirectory,
@@ -446,7 +546,7 @@ struct ExcelConversionView: View {
             }
         }
 
-        var args = inputFiles.map(UserPath.normalize)
+        var args = filesToConvert.map(UserPath.normalize)
         args.append(normalizedOutputDirectory)
         args += ["--format", format.rawValue]
         args += ["--header-row", headerRow.trimmedOr("1")]
@@ -489,6 +589,9 @@ struct ExcelConversionView: View {
             }
             args += ["--locale-config", UserPath.normalize(localeConfigPath)]
         }
+        if let normalizedMergeDirectory {
+            args += ["--merge-into", normalizedMergeDirectory]
+        }
 
         let workingDirectory = URL(fileURLWithPath: normalizedOutputDirectory)
 
@@ -502,6 +605,29 @@ struct ExcelConversionView: View {
         } catch {
             runner.presentSetupError(error.localizedDescription)
         }
+    }
+
+    private func seedProjectLocalizationDirectoryIfNeeded() {
+        guard projectLocalizationDirectory.trimmed.isEmpty,
+              UserPath.isDirectory(projectRootStore.path)
+        else {
+            return
+        }
+
+        let projectRoot = URL(fileURLWithPath: UserPath.normalize(projectRootStore.path), isDirectory: true)
+        let candidates = [
+            "Renogy/Localizables",
+            "Localizables",
+            "Resources/Localizables",
+            "Resources/Localization",
+        ]
+        guard let directory = candidates
+            .map({ projectRoot.appendingPathComponent($0, isDirectory: true).path })
+            .first(where: UserPath.isDirectory)
+        else {
+            return
+        }
+        projectLocalizationDirectory = directory
     }
 }
 

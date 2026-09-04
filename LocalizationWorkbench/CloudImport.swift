@@ -147,6 +147,24 @@ struct DingTalkExportConfiguration: Equatable {
         ]
     }
 
+    /// 同一导出目标始终使用同一个键，与用户给链接取的显示名无关。
+    var downloadSourceKey: String {
+        ["dingTalkMCP", baseID, scope.rawValue, tableID, viewID]
+            .joined(separator: "|")
+    }
+
+    /// 文件名只来自云端标识，用户修改链接显示名时仍能覆盖同一份下载文件。
+    var downloadFileStem: String {
+        switch scope {
+        case .all:
+            return "DingTalk-\(baseID)-Base"
+        case .table:
+            return "DingTalk-\(baseID)-Sheet-\(tableID)"
+        case .view:
+            return "DingTalk-\(baseID)-Sheet-\(tableID)-View-\(viewID)"
+        }
+    }
+
     func validate() throws {
         guard !baseID.isEmpty else {
             throw CloudImportError.invalidSourceConfiguration("缺少钉钉 Base ID")
@@ -1106,7 +1124,8 @@ struct DingTalkMCPWorkbookProvider: CloudWorkbookProvider {
         onProgress("正在解压并校验 Excel 文件")
         let workbooks = try await WorkbookArchiveExtractor.extract(
             archive: archiveURL,
-            preferredName: source.name,
+            sourceKey: configuration.downloadSourceKey,
+            preferredName: configuration.downloadFileStem,
             destinationDirectory: destinationDirectory
         )
         guard !workbooks.isEmpty else {
@@ -1228,6 +1247,7 @@ enum ProcessExecutor {
 enum WorkbookArchiveExtractor {
     static func extract(
         archive: URL,
+        sourceKey: String,
         preferredName: String,
         destinationDirectory: URL
     ) async throws -> [URL] {
@@ -1242,7 +1262,7 @@ enum WorkbookArchiveExtractor {
 
         let request = try PythonBridge.request(
             scriptName: "extract_downloaded_workbooks.py",
-            arguments: [archive.path, destinationDirectory.path, preferredName]
+            arguments: [archive.path, destinationDirectory.path, sourceKey, preferredName]
         )
         let output = try await ProcessExecutor.run(request)
         guard let data = output.data(using: .utf8),
@@ -1282,6 +1302,22 @@ enum CloudDownloadPhase: Equatable {
             return "已取消"
         }
     }
+
+    var isFinished: Bool {
+        switch self {
+        case .succeeded, .failed, .cancelled:
+            return true
+        case .queued, .exporting:
+            return false
+        }
+    }
+
+    var isExporting: Bool {
+        if case .exporting = self {
+            return true
+        }
+        return false
+    }
 }
 
 struct CloudDownloadStatus: Equatable {
@@ -1292,12 +1328,26 @@ struct CloudDownloadStatus: Equatable {
 @MainActor
 final class CloudDownloadCoordinator: ObservableObject {
     @Published private(set) var isDownloading = false
+    @Published private(set) var isCancelling = false
     @Published private(set) var statuses: [UUID: CloudDownloadStatus] = [:]
 
     private var downloadTask: Task<Void, Never>?
 
     func status(for sourceID: UUID) -> CloudDownloadStatus? {
         statuses[sourceID]
+    }
+
+    var activeStatus: CloudDownloadStatus? {
+        statuses.values.first(where: { $0.phase.isExporting }) ??
+            statuses.values.first(where: { !$0.phase.isFinished })
+    }
+
+    var completedSourceCount: Int {
+        statuses.values.filter { $0.phase.isFinished }.count
+    }
+
+    var totalSourceCount: Int {
+        statuses.count
     }
 
     func download(
@@ -1334,6 +1384,7 @@ final class CloudDownloadCoordinator: ObservableObject {
                 ($0.id, CloudDownloadStatus(phase: .queued, detail: "等待开始"))
             }
         )
+        isCancelling = false
         isDownloading = true
 
         downloadTask = Task { [weak self] in
@@ -1385,11 +1436,16 @@ final class CloudDownloadCoordinator: ObservableObject {
                 onImported(UserPath.deduplicated(importedPaths))
             }
             self.isDownloading = false
+            self.isCancelling = false
             self.downloadTask = nil
         }
     }
 
     func cancel() {
+        guard isDownloading, !isCancelling else {
+            return
+        }
+        isCancelling = true
         downloadTask?.cancel()
     }
 

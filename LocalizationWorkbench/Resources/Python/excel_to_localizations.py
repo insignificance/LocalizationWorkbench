@@ -679,6 +679,14 @@ def parse_args() -> argparse.Namespace:
         help="Path to the log file. Defaults to <output>/conversion_issues.log.",
     )
     parser.add_argument(
+        "--merge-into",
+        type=Path,
+        help=(
+            "Optional localization resource root. Generated .strings / .xcstrings files are merged "
+            "into this directory after conversion; incoming cloud translations replace matching keys."
+        ),
+    )
+    parser.add_argument(
         "--chunk-rows",
         type=int,
         default=DEFAULT_CHUNK_ROWS,
@@ -716,8 +724,10 @@ def load_workbook_metadata(
 
 
 def normalize_zip_path(base: str, target: str) -> str:
+    # OOXML 关系既可能是相对路径，也可能以 / 开头表示包根目录的绝对路径。
+    raw_path = target if target.startswith("/") else f"{base}/{target}"
     parts: List[str] = []
-    for part in f"{base}/{target}".split("/"):
+    for part in raw_path.split("/"):
         if not part or part == ".":
             continue
         if part == "..":
@@ -1506,6 +1516,295 @@ def write_outputs_streamed(
         )
 
 
+@dataclass(frozen=True)
+class StringsEntry:
+    key: str
+    key_literal: str
+    value_literal: str
+    value_start: int
+    value_end: int
+
+
+def scan_quoted_strings_literal(contents: str, start: int) -> Optional[Tuple[int, int]]:
+    """返回带引号字符串的范围，兼容转义的双引号。"""
+    if start >= len(contents) or contents[start] != '"':
+        return None
+
+    index = start + 1
+    while index < len(contents):
+        if contents[index] == "\\":
+            index += 2
+            continue
+        if contents[index] == '"':
+            return start, index + 1
+        index += 1
+    return None
+
+
+def skip_strings_ignorable(contents: str, start: int) -> int:
+    """跳过 .strings 中的空白与 C 风格注释，避免把注释内容当成键值。"""
+    index = start
+    while index < len(contents):
+        while index < len(contents) and contents[index].isspace():
+            index += 1
+
+        if contents.startswith("/*", index):
+            comment_end = contents.find("*/", index + 2)
+            return len(contents) if comment_end == -1 else skip_strings_ignorable(contents, comment_end + 2)
+
+        if contents.startswith("//", index):
+            line_end = contents.find("\n", index + 2)
+            return len(contents) if line_end == -1 else skip_strings_ignorable(contents, line_end + 1)
+
+        break
+    return index
+
+
+def decode_strings_literal(literal: str) -> str:
+    """解码 .strings 键名，只用于匹配，不会重写目标文件的键或注释。"""
+    value = literal[1:-1]
+    decoded: List[str] = []
+    index = 0
+    simple_escapes = {"n": "\n", "r": "\r", "t": "\t"}
+
+    while index < len(value):
+        char = value[index]
+        if char != "\\" or index + 1 >= len(value):
+            decoded.append(char)
+            index += 1
+            continue
+
+        escaped = value[index + 1]
+        if escaped in simple_escapes:
+            decoded.append(simple_escapes[escaped])
+            index += 2
+            continue
+        if escaped in {"u", "U"}:
+            width = 4 if escaped == "u" else 8
+            codepoint = value[index + 2 : index + 2 + width]
+            if len(codepoint) == width and all(character in "0123456789abcdefABCDEF" for character in codepoint):
+                decoded.append(chr(int(codepoint, 16)))
+                index += width + 2
+                continue
+        decoded.append(escaped)
+        index += 2
+    return "".join(decoded)
+
+
+def scan_strings_entries(contents: str) -> List[StringsEntry]:
+    """解析 .strings 键值范围，以便仅替换值并保留项目原有注释与排版。"""
+    entries: List[StringsEntry] = []
+    index = 0
+
+    while index < len(contents):
+        index = skip_strings_ignorable(contents, index)
+        if index >= len(contents):
+            break
+        if contents[index] != '"':
+            index += 1
+            continue
+
+        key_range = scan_quoted_strings_literal(contents, index)
+        if key_range is None:
+            index += 1
+            continue
+        key_start, key_end = key_range
+
+        equals_index = skip_strings_ignorable(contents, key_end)
+        if equals_index >= len(contents) or contents[equals_index] != "=":
+            index = key_end
+            continue
+
+        value_index = skip_strings_ignorable(contents, equals_index + 1)
+        value_range = scan_quoted_strings_literal(contents, value_index)
+        if value_range is None:
+            index = key_end
+            continue
+        value_start, value_end = value_range
+
+        semicolon_index = skip_strings_ignorable(contents, value_end)
+        if semicolon_index >= len(contents) or contents[semicolon_index] != ";":
+            index = key_end
+            continue
+
+        key_literal = contents[key_start:key_end]
+        entries.append(
+            StringsEntry(
+                key=decode_strings_literal(key_literal),
+                key_literal=key_literal,
+                value_literal=contents[value_start:value_end],
+                value_start=value_start,
+                value_end=value_end,
+            )
+        )
+        index = semicolon_index + 1
+
+    return entries
+
+
+def write_text_atomically(path: Path, contents: str) -> None:
+    """先写临时文件再替换，避免合并中断时损坏项目资源文件。"""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f"{path.name}.partial")
+    try:
+        temporary.write_text(contents, encoding="utf-8")
+        temporary.replace(path)
+    except Exception:
+        temporary.unlink(missing_ok=True)
+        raise
+
+
+def merge_strings_file(source_file: Path, target_file: Path) -> None:
+    """将转换结果并入已有 .strings；同 key 仅替换值，其他内容原样保留。"""
+    if source_file.resolve() == target_file.resolve():
+        print(f"Skipped merge because source and target are the same: {target_file}")
+        return
+
+    source_contents = source_file.read_text(encoding="utf-8")
+    source_entries = scan_strings_entries(source_contents)
+    if not source_entries:
+        raise ValueError(f"Generated strings file contains no readable entries: {source_file}")
+
+    if not target_file.exists():
+        write_text_atomically(target_file, source_contents)
+        print(f"Created {target_file}")
+        return
+
+    target_contents = target_file.read_text(encoding="utf-8")
+    target_entries = scan_strings_entries(target_contents)
+    target_entries_by_key: Dict[str, List[StringsEntry]] = {}
+    for entry in target_entries:
+        target_entries_by_key.setdefault(entry.key, []).append(entry)
+
+    source_entries_by_key: Dict[str, StringsEntry] = {}
+    for entry in source_entries:
+        source_entries_by_key[entry.key] = entry
+
+    replacements: List[Tuple[int, int, str]] = []
+    for key, source_entry in source_entries_by_key.items():
+        for target_entry in target_entries_by_key.get(key, []):
+            replacements.append((target_entry.value_start, target_entry.value_end, source_entry.value_literal))
+
+    merged_contents = target_contents
+    for value_start, value_end, replacement in reversed(replacements):
+        merged_contents = merged_contents[:value_start] + replacement + merged_contents[value_end:]
+
+    missing_entries = [
+        entry for key, entry in source_entries_by_key.items() if key not in target_entries_by_key
+    ]
+    if missing_entries:
+        if merged_contents and not merged_contents.endswith("\n"):
+            merged_contents += "\n"
+        if merged_contents:
+            merged_contents += "\n"
+        merged_contents += "/* Imported from Localization Workbench */\n"
+        merged_contents += "\n".join(
+            f"{entry.key_literal} = {entry.value_literal};" for entry in missing_entries
+        )
+        merged_contents += "\n"
+
+    write_text_atomically(target_file, merged_contents)
+    print(f"Merged {source_file} -> {target_file}")
+
+
+def read_xcstrings_document(path: Path) -> Dict[str, object]:
+    try:
+        with path.open("r", encoding="utf-8-sig") as source:
+            document = json.load(source)
+    except json.JSONDecodeError as error:
+        raise ValueError(f"Invalid .xcstrings JSON: {path}") from error
+
+    if not isinstance(document, dict):
+        raise ValueError(f"Invalid .xcstrings root object: {path}")
+    return document
+
+
+def merge_xcstrings_file(source_file: Path, target_file: Path) -> None:
+    """保留项目 Catalog 的元数据，只更新云端提供的语言翻译。"""
+    if source_file.resolve() == target_file.resolve():
+        print(f"Skipped merge because source and target are the same: {target_file}")
+        return
+
+    source_document = read_xcstrings_document(source_file)
+    source_strings = source_document.get("strings")
+    if not isinstance(source_strings, dict):
+        raise ValueError(f"Invalid .xcstrings strings object: {source_file}")
+
+    if not target_file.exists():
+        write_text_atomically(target_file, source_file.read_text(encoding="utf-8"))
+        print(f"Created {target_file}")
+        return
+
+    target_document = read_xcstrings_document(target_file)
+    target_strings = target_document.get("strings")
+    if target_strings is None:
+        target_strings = {}
+        target_document["strings"] = target_strings
+    if not isinstance(target_strings, dict):
+        raise ValueError(f"Invalid .xcstrings strings object: {target_file}")
+
+    for key, source_entry in source_strings.items():
+        if not isinstance(source_entry, dict):
+            continue
+        target_entry = target_strings.get(key)
+        if not isinstance(target_entry, dict):
+            target_strings[key] = source_entry
+            continue
+
+        source_localizations = source_entry.get("localizations")
+        if not isinstance(source_localizations, dict):
+            continue
+        target_localizations = target_entry.get("localizations")
+        if target_localizations is None:
+            target_localizations = {}
+            target_entry["localizations"] = target_localizations
+        if not isinstance(target_localizations, dict):
+            raise ValueError(f"Invalid .xcstrings localizations object for key {key}: {target_file}")
+        target_localizations.update(source_localizations)
+
+    for document_key in ("sourceLanguage", "version"):
+        if document_key not in target_document and document_key in source_document:
+            target_document[document_key] = source_document[document_key]
+
+    write_text_atomically(
+        target_file,
+        json.dumps(target_document, ensure_ascii=False, indent=2) + "\n",
+    )
+    print(f"Merged {source_file} -> {target_file}")
+
+
+def merge_generated_outputs(
+    output_dir: Path,
+    target_directory: Path,
+    table_name: str,
+    output_format: str,
+    languages: List[str],
+) -> None:
+    """把本次转换文件合并到用户选定的项目资源根目录。"""
+    if not target_directory.is_dir():
+        raise ValueError(f"Localization resource directory does not exist: {target_directory}")
+
+    merged_file_count = 0
+    if output_format in ("strings", "both"):
+        for language in languages:
+            source_file = output_dir / lproj_folder(language) / f"{table_name}.strings"
+            if not source_file.is_file():
+                continue
+            target_file = target_directory / lproj_folder(language) / f"{table_name}.strings"
+            merge_strings_file(source_file, target_file)
+            merged_file_count += 1
+
+    if output_format in ("xcstrings", "both"):
+        source_file = output_dir / f"{table_name}.xcstrings"
+        if source_file.is_file():
+            merge_xcstrings_file(source_file, target_directory / source_file.name)
+            merged_file_count += 1
+
+    if merged_file_count == 0:
+        raise ValueError("No generated localization files were available to merge.")
+    print(f"Merged {merged_file_count} localization resource file(s) into {target_directory}")
+
+
 def resolve_log_path(output_dir: Path, raw_log_file: Optional[str]) -> Path:
     if raw_log_file:
         return Path(raw_log_file)
@@ -1540,7 +1839,15 @@ def main() -> int:
 
     try:
         configure_locale_registry(args.locale_config)
+        if args.merge_into is not None:
+            if not args.merge_into.is_dir():
+                raise ValueError(f"Localization resource directory does not exist: {args.merge_into}")
+            if args.output.resolve() == args.merge_into.resolve():
+                raise ValueError(
+                    "Conversion output directory must differ from the localization resource directory."
+                )
         output_specs = build_output_specs(args)
+        table_name = args.table_name.strip() or "Localizable"
         progress = ConversionProgress(args.input)
         with tempfile.TemporaryDirectory(prefix="localization-workbench-conversion-") as temporary_directory:
             entry_store = EntryStore(Path(temporary_directory), issue_log)
@@ -1556,13 +1863,21 @@ def main() -> int:
                 development_language = args.development_language or languages[0]
                 write_outputs_streamed(
                     output_dir=args.output,
-                    table_name=args.table_name,
+                    table_name=table_name,
                     output_format=args.format,
                     languages=languages,
                     entry_store=entry_store,
                     development_language=development_language,
                     progress=progress,
                 )
+                if args.merge_into is not None:
+                    merge_generated_outputs(
+                        output_dir=args.output,
+                        target_directory=args.merge_into,
+                        table_name=table_name,
+                        output_format=args.format,
+                        languages=languages,
+                    )
             finally:
                 entry_store.close()
     except KeyboardInterrupt:
