@@ -1,0 +1,789 @@
+//
+//  CloudImportViews.swift
+//  LocalizationWorkbench
+//
+//  Author: Renogy_YX
+//
+
+import AppKit
+import SwiftUI
+
+struct CloudImportSection: View {
+    let accent: Color
+    @ObservedObject var sourceStore: CloudWorkbookSourceStore
+    @ObservedObject var connectionStore: DingTalkMCPConnectionStore
+    @ObservedObject var downloadCoordinator: CloudDownloadCoordinator
+    @Binding var downloadDirectory: String
+    let didImport: ([String]) -> Void
+
+    @State private var isShowingCloudImportSheet = false
+
+    private var connectionTint: Color {
+        switch connectionStore.state {
+        case .connected:
+            return .green
+        case .verifying:
+            return .orange
+        case .disconnected, .failed:
+            return .orange
+        }
+    }
+
+    var body: some View {
+        SectionCard(
+            title: "云端 Excel",
+            subtitle: "钉钉链接会经由每位用户自己的 MCP 连接导出为 Excel，再自动加入当前转换任务。",
+            accent: accent
+        ) {
+            HStack(alignment: .center, spacing: 14) {
+                Image(systemName: connectionStore.isConnected ? "checkmark.icloud.fill" : "icloud.slash")
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundStyle(connectionTint)
+                    .frame(width: 36, height: 36)
+                    .background(connectionTint.opacity(0.12), in: RoundedRectangle(cornerRadius: 11))
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("钉钉 MCP：\(connectionStore.statusTitle)")
+                        .font(.system(size: 13, weight: .semibold, design: .rounded))
+                        .foregroundStyle(Color.black.opacity(0.8))
+                    Text(connectionStore.statusDetail)
+                        .font(.system(size: 11, weight: .medium, design: .serif))
+                        .foregroundStyle(Color.black.opacity(0.54))
+                        .lineLimit(2)
+                }
+
+                Spacer(minLength: 12)
+
+                VStack(alignment: .trailing, spacing: 4) {
+                    Text("\(sourceStore.sources.count) 个已保存链接")
+                        .font(.system(size: 12, weight: .bold, design: .rounded))
+                        .foregroundStyle(Color.black.opacity(0.7))
+                    Text("支持勾选多个链接批量下载")
+                        .font(.system(size: 10, weight: .medium, design: .serif))
+                        .foregroundStyle(Color.black.opacity(0.48))
+                }
+
+                Button("管理云端链接") {
+                    isShowingCloudImportSheet = true
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(accent)
+            }
+        }
+        .sheet(isPresented: $isShowingCloudImportSheet) {
+            CloudImportSheet(
+                sourceStore: sourceStore,
+                connectionStore: connectionStore,
+                downloadCoordinator: downloadCoordinator,
+                downloadDirectory: $downloadDirectory,
+                didImport: didImport
+            )
+        }
+        .onAppear {
+            if downloadDirectory.cloudImportTrimmed.isEmpty {
+                downloadDirectory = CloudDownloadLocation.defaultDirectoryPath
+            }
+        }
+    }
+}
+
+struct CloudImportSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    @ObservedObject var sourceStore: CloudWorkbookSourceStore
+    @ObservedObject var connectionStore: DingTalkMCPConnectionStore
+    @ObservedObject var downloadCoordinator: CloudDownloadCoordinator
+    @Binding var downloadDirectory: String
+    let didImport: ([String]) -> Void
+
+    @State private var selectedSourceIDs = Set<UUID>()
+    @State private var isShowingConnectionSheet = false
+    @State private var isAddingSource = false
+    @State private var sourceBeingEdited: CloudWorkbookSource?
+
+    private var selectedSources: [CloudWorkbookSource] {
+        sourceStore.sources.filter { selectedSourceIDs.contains($0.id) }
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            header
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    connectionCard
+                    sourceList
+
+                    SectionCard(
+                        title: "下载保存目录",
+                        subtitle: "下载完成后会自动把校验通过的 .xlsx 文件加入本页的 Excel 输入列表。",
+                        accent: .blue
+                    ) {
+                        PathField(
+                            title: "Excel 保存目录",
+                            prompt: CloudDownloadLocation.defaultDirectoryPath,
+                            text: $downloadDirectory,
+                            browseLabel: "选择目录"
+                        ) {
+                            downloadDirectory = OpenPanelHelper.chooseDirectory(title: "选择云端 Excel 保存目录") ?? downloadDirectory
+                        }
+                    }
+                }
+                .padding(20)
+            }
+
+            Divider()
+            footer
+        }
+        .frame(minWidth: 760, minHeight: 650)
+        .onAppear {
+            synchronizeSelection()
+            if downloadDirectory.cloudImportTrimmed.isEmpty {
+                downloadDirectory = CloudDownloadLocation.defaultDirectoryPath
+            }
+        }
+        .onChange(of: sourceStore.sources.map(\.id)) { _ in
+            synchronizeSelection()
+        }
+        .sheet(isPresented: $isShowingConnectionSheet) {
+            DingTalkMCPConnectionSheet(connectionStore: connectionStore)
+        }
+        .sheet(isPresented: $isAddingSource) {
+            DingTalkSourceEditorSheet(source: nil) { source in
+                sourceStore.save(source)
+                selectedSourceIDs.insert(source.id)
+            }
+        }
+        .sheet(item: $sourceBeingEdited) { source in
+            DingTalkSourceEditorSheet(source: source) { updatedSource in
+                sourceStore.save(updatedSource)
+                selectedSourceIDs.insert(updatedSource.id)
+            }
+        }
+    }
+
+    private var header: some View {
+        HStack(alignment: .center, spacing: 12) {
+            Image(systemName: "icloud.and.arrow.down.fill")
+                .font(.system(size: 21, weight: .bold))
+                .foregroundStyle(.blue)
+                .frame(width: 42, height: 42)
+                .background(.blue.opacity(0.12), in: RoundedRectangle(cornerRadius: 13))
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text("云端下载链接")
+                    .font(.system(size: 19, weight: .bold, design: .rounded))
+                Text("保存多个钉钉在线文档链接，按需勾选并批量导入。")
+                    .font(.system(size: 12, weight: .medium, design: .serif))
+                    .foregroundStyle(Color.black.opacity(0.55))
+            }
+
+            Spacer()
+
+            Button("完成") {
+                dismiss()
+            }
+            .buttonStyle(.bordered)
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 16)
+        .background(.ultraThinMaterial)
+    }
+
+    private var connectionCard: some View {
+        SectionCard(
+            title: "钉钉 AI 表格 MCP",
+            subtitle: "MCP 连接地址含个人访问凭据，只保存在当前 macOS 用户的系统钥匙串中。",
+            accent: .blue
+        ) {
+            HStack(spacing: 12) {
+                Image(systemName: connectionStore.isConnected ? "checkmark.shield.fill" : "person.crop.circle.badge.questionmark")
+                    .foregroundStyle(connectionStore.isConnected ? Color.green : Color.orange)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(connectionStore.statusTitle)
+                        .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    Text(connectionStore.statusDetail)
+                        .font(.system(size: 11, weight: .medium, design: .serif))
+                        .foregroundStyle(Color.black.opacity(0.55))
+                }
+
+                Spacer()
+
+                Button(connectionStore.isConnected ? "管理连接" : "连接钉钉") {
+                    isShowingConnectionSheet = true
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.blue)
+            }
+        }
+    }
+
+    private var sourceList: some View {
+        SectionCard(
+            title: "钉钉下载链接",
+            subtitle: "一个链接对应一个可复用数据源；链接本身不保存登录凭据。",
+            accent: .blue
+        ) {
+            HStack {
+                Text("已选择 \(selectedSources.count) / \(sourceStore.sources.count)")
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .foregroundStyle(Color.black.opacity(0.5))
+
+                Spacer()
+
+                Button {
+                    isAddingSource = true
+                } label: {
+                    Label("新增钉钉链接", systemImage: "plus")
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.blue)
+                .disabled(downloadCoordinator.isDownloading)
+            }
+
+            if sourceStore.sources.isEmpty {
+                VStack(spacing: 8) {
+                    Image(systemName: "link.badge.plus")
+                        .font(.system(size: 26, weight: .semibold))
+                        .foregroundStyle(.blue.opacity(0.75))
+                    Text("尚未保存下载链接")
+                        .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    Text("添加钉钉 AI 表格在线文档链接后，即可批量下载 Excel。")
+                        .font(.system(size: 11, weight: .medium, design: .serif))
+                        .foregroundStyle(Color.black.opacity(0.5))
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 24)
+            } else {
+                VStack(spacing: 10) {
+                    ForEach(sourceStore.sources) { source in
+                        CloudWorkbookSourceRow(
+                            source: source,
+                            isSelected: selectedBinding(for: source),
+                            status: downloadCoordinator.status(for: source.id),
+                            isDisabled: downloadCoordinator.isDownloading,
+                            editAction: {
+                                sourceBeingEdited = source
+                            },
+                            deleteAction: {
+                                selectedSourceIDs.remove(source.id)
+                                sourceStore.delete(source)
+                            }
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    private var footer: some View {
+        HStack(spacing: 12) {
+            if downloadCoordinator.isDownloading {
+                ProgressView()
+                    .controlSize(.small)
+                Text("正在处理钉钉导出任务…")
+                    .font(.system(size: 12, weight: .medium, design: .serif))
+                    .foregroundStyle(Color.black.opacity(0.58))
+            } else {
+                Text("会保留已成功下载的文件；失败的链接可单独重试。")
+                    .font(.system(size: 11, weight: .medium, design: .serif))
+                    .foregroundStyle(Color.black.opacity(0.48))
+            }
+
+            Spacer()
+
+            if downloadCoordinator.isDownloading {
+                Button("取消下载") {
+                    downloadCoordinator.cancel()
+                }
+                .buttonStyle(.bordered)
+            }
+
+            Button {
+                startDownload()
+            } label: {
+                Label(
+                    "下载选中的 \(selectedSources.count) 个链接",
+                    systemImage: "arrow.down.circle.fill"
+                )
+                .frame(minWidth: 170)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(.blue)
+            .disabled(
+                selectedSources.isEmpty ||
+                    downloadCoordinator.isDownloading ||
+                    !connectionStore.isConnected
+            )
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 14)
+        .background(.ultraThinMaterial)
+    }
+
+    private func selectedBinding(for source: CloudWorkbookSource) -> Binding<Bool> {
+        Binding(
+            get: { selectedSourceIDs.contains(source.id) },
+            set: { isSelected in
+                if isSelected {
+                    selectedSourceIDs.insert(source.id)
+                } else {
+                    selectedSourceIDs.remove(source.id)
+                }
+            }
+        )
+    }
+
+    private func synchronizeSelection() {
+        let currentIDs = Set(sourceStore.sources.map(\.id))
+        selectedSourceIDs.formIntersection(currentIDs)
+        if selectedSourceIDs.isEmpty, !currentIDs.isEmpty {
+            selectedSourceIDs = currentIDs
+        }
+    }
+
+    private func startDownload() {
+        if downloadDirectory.cloudImportTrimmed.isEmpty {
+            downloadDirectory = CloudDownloadLocation.defaultDirectoryPath
+        }
+        downloadCoordinator.download(
+            sources: selectedSources,
+            destinationPath: downloadDirectory,
+            connectionStore: connectionStore,
+            onImported: didImport
+        )
+    }
+}
+
+private struct CloudWorkbookSourceRow: View {
+    let source: CloudWorkbookSource
+    @Binding var isSelected: Bool
+    let status: CloudDownloadStatus?
+    let isDisabled: Bool
+    let editAction: () -> Void
+    let deleteAction: () -> Void
+
+    private var statusColor: Color {
+        guard let status else {
+            return Color.black.opacity(0.42)
+        }
+        switch status.phase {
+        case .queued, .exporting:
+            return .blue
+        case .succeeded:
+            return .green
+        case .failed:
+            return .red
+        case .cancelled:
+            return .orange
+        }
+    }
+
+    private var statusSymbol: String {
+        guard let status else {
+            return "circle.dashed"
+        }
+        switch status.phase {
+        case .queued:
+            return "clock"
+        case .exporting:
+            return "arrow.triangle.2.circlepath"
+        case .succeeded:
+            return "checkmark.circle.fill"
+        case .failed:
+            return "exclamationmark.triangle.fill"
+        case .cancelled:
+            return "xmark.circle"
+        }
+    }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Toggle("", isOn: $isSelected)
+                .toggleStyle(.checkbox)
+                .labelsHidden()
+                .padding(.top, 3)
+
+            Image(systemName: source.provider.symbolName)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(.blue)
+                .frame(width: 30, height: 30)
+                .background(.blue.opacity(0.1), in: RoundedRectangle(cornerRadius: 9))
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(source.name)
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .foregroundStyle(Color.black.opacity(0.82))
+                Text(source.summary)
+                    .font(.system(size: 10, weight: .medium, design: .monospaced))
+                    .foregroundStyle(Color.black.opacity(0.5))
+                    .lineLimit(1)
+                if let status {
+                    Label(status.detail, systemImage: statusSymbol)
+                        .font(.system(size: 10, weight: .medium, design: .serif))
+                        .foregroundStyle(statusColor)
+                        .lineLimit(2)
+                }
+            }
+
+            Spacer(minLength: 12)
+
+            VStack(alignment: .trailing, spacing: 7) {
+                Text(source.provider.title)
+                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .foregroundStyle(.blue)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(.blue.opacity(0.1), in: Capsule())
+
+                HStack(spacing: 6) {
+                    Button("编辑", action: editAction)
+                        .buttonStyle(.bordered)
+                    Button(role: .destructive, action: deleteAction) {
+                        Image(systemName: "trash")
+                    }
+                    .buttonStyle(.bordered)
+                }
+            }
+        }
+        .padding(12)
+        .background(Color.black.opacity(0.035), in: RoundedRectangle(cornerRadius: 16))
+        .disabled(isDisabled)
+    }
+}
+
+struct DingTalkMCPConnectionSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    @ObservedObject var connectionStore: DingTalkMCPConnectionStore
+
+    @State private var draftEndpoint = ""
+    @State private var localCandidates: [LocalDingTalkMCPConnectionCandidate] = []
+    @State private var validationMessage = ""
+    @State private var isSaving = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("连接钉钉 AI 表格 MCP")
+                        .font(.system(size: 19, weight: .bold, design: .rounded))
+                    Text("导入或粘贴自己的 MCP 连接地址，应用仅保存到本机钥匙串。")
+                        .font(.system(size: 12, weight: .medium, design: .serif))
+                        .foregroundStyle(Color.black.opacity(0.55))
+                }
+                Spacer()
+                Button("关闭") {
+                    dismiss()
+                }
+                .buttonStyle(.bordered)
+            }
+
+            GroupBox("当前状态") {
+                HStack(spacing: 10) {
+                    Image(systemName: connectionStore.isConnected ? "checkmark.shield.fill" : "shield.slash")
+                        .foregroundStyle(connectionStore.isConnected ? Color.green : Color.orange)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(connectionStore.statusTitle)
+                            .font(.system(size: 13, weight: .semibold, design: .rounded))
+                        Text(connectionStore.statusDetail)
+                            .font(.system(size: 11, weight: .medium, design: .serif))
+                            .foregroundStyle(Color.black.opacity(0.52))
+                    }
+                    Spacer()
+                    if connectionStore.isConnected {
+                        Button("断开") {
+                            connectionStore.disconnect()
+                        }
+                        .buttonStyle(.bordered)
+                        .tint(.red)
+                    }
+                }
+                .padding(.vertical, 4)
+            }
+
+            GroupBox("使用已有 Agent 配置") {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("若你已在 Claude、Qoder、Codex 等客户端连接官方钉钉 AI 表格 MCP，可从本机配置导入，无需再次复制访问 Key。")
+                        .font(.system(size: 11, weight: .medium, design: .serif))
+                        .foregroundStyle(Color.black.opacity(0.55))
+
+                    if localCandidates.isEmpty {
+                        Text("尚未发现本机已配置的钉钉 AI 表格 MCP。")
+                            .font(.system(size: 11, weight: .medium, design: .serif))
+                            .foregroundStyle(Color.black.opacity(0.46))
+                    } else {
+                        ForEach(localCandidates) { candidate in
+                            HStack {
+                                Label("来自 \(candidate.title)", systemImage: "desktopcomputer")
+                                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                                Spacer()
+                                Button("使用此连接") {
+                                    draftEndpoint = candidate.endpoint
+                                    validationMessage = ""
+                                }
+                                .buttonStyle(.bordered)
+                            }
+                        }
+                    }
+
+                    Button("重新检测本机配置") {
+                        localCandidates = connectionStore.findLocalCandidates()
+                    }
+                    .buttonStyle(.bordered)
+                }
+                .padding(.vertical, 4)
+            }
+
+            GroupBox("手动连接") {
+                VStack(alignment: .leading, spacing: 10) {
+                    SecureField("粘贴完整 MCP 连接地址", text: $draftEndpoint)
+                        .textFieldStyle(.roundedBorder)
+                    Text("连接地址通常包含个人访问 Key。保存前会调用 initialize 和 tools/list 验证 export_data 能力。")
+                        .font(.system(size: 11, weight: .medium, design: .serif))
+                        .foregroundStyle(Color.black.opacity(0.55))
+
+                    if !validationMessage.isEmpty {
+                        Text(validationMessage)
+                            .font(.system(size: 11, weight: .medium, design: .serif))
+                            .foregroundStyle(.red)
+                    }
+                }
+                .padding(.vertical, 4)
+            }
+
+            Spacer()
+
+            HStack {
+                Spacer()
+                Button {
+                    saveConnection()
+                } label: {
+                    Label(isSaving ? "正在验证" : "保存并验证", systemImage: "checkmark.shield")
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.blue)
+                .disabled(draftEndpoint.cloudImportTrimmed.isEmpty || isSaving)
+            }
+        }
+        .padding(22)
+        .frame(width: 640, height: 570)
+        .onAppear {
+            localCandidates = connectionStore.findLocalCandidates()
+        }
+    }
+
+    private func saveConnection() {
+        validationMessage = ""
+        isSaving = true
+        Task {
+            let connected = await connectionStore.connect(endpoint: draftEndpoint)
+            isSaving = false
+            if connected {
+                draftEndpoint = ""
+                dismiss()
+            } else {
+                validationMessage = connectionStore.statusDetail
+            }
+        }
+    }
+}
+
+struct DingTalkSourceEditorSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    let source: CloudWorkbookSource?
+    let didSave: (CloudWorkbookSource) -> Void
+
+    @State private var name: String
+    @State private var link: String
+    @State private var baseID: String
+    @State private var scope: DingTalkExportScope
+    @State private var tableID: String
+    @State private var viewID: String
+    @State private var validationMessage = ""
+    @State private var usesInferredScope: Bool
+
+    init(source: CloudWorkbookSource?, didSave: @escaping (CloudWorkbookSource) -> Void) {
+        self.source = source
+        self.didSave = didSave
+
+        let configuration = source.flatMap { try? DingTalkExportConfiguration(source: $0) }
+        _name = State(initialValue: source?.name ?? "")
+        _link = State(initialValue: source?.link ?? "")
+        _baseID = State(initialValue: configuration?.baseID ?? "")
+        _scope = State(initialValue: configuration?.scope ?? .all)
+        _tableID = State(initialValue: configuration?.tableID ?? "")
+        _viewID = State(initialValue: configuration?.viewID ?? "")
+        // 新建链接默认跟随 URL 中的 Sheet / View；编辑已有链接时保留用户已选范围。
+        _usesInferredScope = State(initialValue: source == nil)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(source == nil ? "新增钉钉下载链接" : "编辑钉钉下载链接")
+                        .font(.system(size: 19, weight: .bold, design: .rounded))
+                    Text("链接只用于识别导出目标，钉钉账号凭据不会保存在此处。")
+                        .font(.system(size: 12, weight: .medium, design: .serif))
+                        .foregroundStyle(Color.black.opacity(0.55))
+                }
+                Spacer()
+                Button("取消") {
+                    dismiss()
+                }
+                .buttonStyle(.bordered)
+            }
+
+            Form {
+                TextField("显示名称", text: $name, prompt: Text("例如：多端文案翻译表"))
+
+                TextField("钉钉在线文档链接", text: $link, prompt: Text("https://alidocs.dingtalk.com/i/nodes/..."))
+
+                HStack {
+                    Button("从链接解析 Base / Sheet / View") {
+                        parseLink()
+                    }
+                    .buttonStyle(.bordered)
+
+                    if !baseID.isEmpty {
+                        Text("已识别 Base ID：\(baseID)")
+                            .font(.system(size: 10, weight: .medium, design: .monospaced))
+                            .foregroundStyle(Color.black.opacity(0.52))
+                            .lineLimit(1)
+                    }
+                }
+
+                Picker("导出范围", selection: scopeSelection) {
+                    ForEach(DingTalkExportScope.allCases) { item in
+                        Text(item.title).tag(item)
+                    }
+                }
+
+                Text(scope.detail)
+                    .font(.system(size: 11, weight: .medium, design: .serif))
+                    .foregroundStyle(Color.black.opacity(0.52))
+
+                if let reference = try? DingTalkDocumentReference.parse(link),
+                   !usesInferredScope,
+                   reference.inferredScope != scope
+                {
+                    Text("当前链接指向\(reference.inferredScope.title)。如需按该 Sheet / View 导出，请点击上方“从链接解析”。")
+                        .font(.system(size: 11, weight: .medium, design: .serif))
+                        .foregroundStyle(.orange)
+                }
+
+                TextField("Base ID", text: $baseID, prompt: Text("从在线文档链接自动解析"))
+
+                if scope == .table || scope == .view {
+                    TextField("Sheet ID", text: $tableID, prompt: Text("从 sheetId 自动解析"))
+                }
+                if scope == .view {
+                    TextField("View ID", text: $viewID, prompt: Text("从 viewId 自动解析"))
+                }
+            }
+            .formStyle(.grouped)
+
+            if !validationMessage.isEmpty {
+                Text(validationMessage)
+                    .font(.system(size: 11, weight: .medium, design: .serif))
+                    .foregroundStyle(.red)
+            }
+
+            Spacer()
+
+            HStack {
+                Spacer()
+                Button(source == nil ? "保存链接" : "保存修改") {
+                    saveSource()
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.blue)
+                .disabled(link.cloudImportTrimmed.isEmpty)
+            }
+        }
+        .padding(22)
+        .frame(width: 680, height: 510)
+        .onChange(of: link) { _ in
+            applyInferredReferenceIfNeeded()
+        }
+    }
+
+    private func parseLink() {
+        do {
+            let reference = try DingTalkDocumentReference.parse(link)
+            baseID = reference.baseID
+            tableID = reference.tableID
+            viewID = reference.viewID
+            scope = reference.inferredScope
+            usesInferredScope = true
+            validationMessage = ""
+        } catch {
+            validationMessage = error.localizedDescription
+        }
+    }
+
+    private func applyInferredReferenceIfNeeded() {
+        guard usesInferredScope,
+              let reference = try? DingTalkDocumentReference.parse(link)
+        else {
+            return
+        }
+        baseID = reference.baseID
+        tableID = reference.tableID
+        viewID = reference.viewID
+        scope = reference.inferredScope
+    }
+
+    private func saveSource() {
+        do {
+            let reference = try DingTalkDocumentReference.parse(link)
+            if usesInferredScope {
+                scope = reference.inferredScope
+            }
+            if baseID.cloudImportTrimmed.isEmpty {
+                baseID = reference.baseID
+            }
+            if tableID.cloudImportTrimmed.isEmpty {
+                tableID = reference.tableID
+            }
+            if viewID.cloudImportTrimmed.isEmpty {
+                viewID = reference.viewID
+            }
+
+            let configuration = try DingTalkExportConfiguration(
+                baseID: baseID,
+                scope: scope,
+                tableID: tableID,
+                viewID: viewID
+            )
+            let displayName = name.cloudImportTrimmed.isEmpty
+                ? "钉钉表格 \(String(configuration.baseID.prefix(8)))"
+                : name.cloudImportTrimmed
+            let savedSource = CloudWorkbookSource(
+                id: source?.id ?? UUID(),
+                name: displayName,
+                provider: .dingTalkMCP,
+                link: link.cloudImportTrimmed,
+                settings: configuration.settings,
+                createdAt: source?.createdAt ?? Date()
+            )
+            didSave(savedSource)
+            dismiss()
+        } catch {
+            validationMessage = error.localizedDescription
+        }
+    }
+
+    private var scopeSelection: Binding<DingTalkExportScope> {
+        Binding(
+            get: { scope },
+            set: { selectedScope in
+                scope = selectedScope
+                usesInferredScope = false
+            }
+        )
+    }
+}

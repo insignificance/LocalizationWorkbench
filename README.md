@@ -30,6 +30,17 @@ chmod +x ./build_with_xcode.sh
 - 不影响根目录下原来的 Swift Package 版本
 - app 仍然通过系统 `python3` 执行这些本地化脚本
 
+## 云端钉钉 Excel 导入
+
+“Excel 转本地化”页面提供“云端 Excel”入口，当前已支持钉钉 AI 表格 MCP：
+
+- 每位用户在自己的 macOS 账户中连接钉钉 MCP；连接地址（含访问 Key）只保存到系统钥匙串。
+- 已在 Claude、Qoder 或 Codex 中配置的 `dingtalk-ai-table` MCP 可一键从本机配置导入，也可以手动粘贴自己的连接地址。
+- 可保存多个钉钉在线文档链接，按需勾选后批量下载；链接会自动解析 Base、Sheet、View，并可调整导出范围。
+- 钉钉导出完成后，应用会下载临时 ZIP / XLSX、校验工作簿、提取 `.xlsx`，自动加入当前的 Excel 输入列表。
+
+数据源模型使用“提供方 + 私有配置”的结构；后续接入其他云端下载方式时，只需新增对应 Provider，不会影响已保存的钉钉链接。
+
 ## 可扩展语言支持
 
 转换与换行检查共用 `LocalizationWorkbench/Resources/Python/locale_aliases.json` 中的语言注册表。内置覆盖 37 个常用语言或地区 Locale，并支持直接使用符合 BCP 47 规范的表头，例如 `ar`、`vi`、`zh-Hant`、`pt-BR`。

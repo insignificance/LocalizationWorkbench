@@ -66,6 +66,9 @@ struct ExcelConversionView: View {
     @Binding var selection: Workflow?
 
     @StateObject private var runner = ProcessRunner()
+    @StateObject private var cloudSourceStore = CloudWorkbookSourceStore()
+    @StateObject private var dingTalkConnectionStore = DingTalkMCPConnectionStore()
+    @StateObject private var cloudDownloadCoordinator = CloudDownloadCoordinator()
 
     @State private var inputFiles: [String] = []
     @State private var outputDirectory = ""
@@ -91,6 +94,8 @@ struct ExcelConversionView: View {
     private var appTrueOnly = true
     @AppStorage("LocalizationWorkbench.ExcelConversion.allSheetsWithApp")
     private var allSheetsWithApp = false
+    @AppStorage("LocalizationWorkbench.CloudImport.downloadDirectory")
+    private var cloudDownloadDirectory = ""
     @State private var conflictPolicy: ExcelConflictPolicy = .keepFirst
     @State private var logFile = ""
 
@@ -140,6 +145,16 @@ struct ExcelConversionView: View {
 
             ConsoleCard(accent: workflow.tint, runner: runner)
         } content: {
+            CloudImportSection(
+                accent: workflow.tint,
+                sourceStore: cloudSourceStore,
+                connectionStore: dingTalkConnectionStore,
+                downloadCoordinator: cloudDownloadCoordinator,
+                downloadDirectory: $cloudDownloadDirectory
+            ) { downloadedFiles in
+                appendInputFiles(downloadedFiles)
+            }
+
             SectionCard(
                 title: "输入与输出",
                 subtitle: "支持一次选择多个工作簿并合并输出。",
@@ -159,11 +174,7 @@ struct ExcelConversionView: View {
                     guard !selection.isEmpty else {
                         return
                     }
-                    inputFiles = UserPath.deduplicated(inputFiles + selection)
-                    if outputDirectory.trimmed.isEmpty, let first = inputFiles.first {
-                        let base = URL(fileURLWithPath: first).deletingLastPathComponent()
-                        outputDirectory = base.appendingPathComponent("output").path
-                    }
+                    appendInputFiles(selection)
                 }
 
                 PathField(
@@ -387,6 +398,19 @@ struct ExcelConversionView: View {
                     },
                 ]
             )
+        }
+    }
+
+    private func appendInputFiles(_ files: [String]) {
+        let updatedFiles = UserPath.deduplicated(inputFiles + files)
+        guard !updatedFiles.isEmpty else {
+            return
+        }
+        inputFiles = updatedFiles
+
+        if outputDirectory.trimmed.isEmpty, let first = updatedFiles.first {
+            let base = URL(fileURLWithPath: first).deletingLastPathComponent()
+            outputDirectory = base.appendingPathComponent("output").path
         }
     }
 

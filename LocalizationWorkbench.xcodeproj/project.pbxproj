@@ -17,6 +17,8 @@
 		AA0000000000000000000008 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000019 /* Assets.xcassets */; };
 		AA0000000000000000000009 /* README.md in Resources */ = {isa = PBXBuildFile; fileRef = AA000000000000000000001B /* README.md */; };
 		AA000000000000000000000A /* DestructionGuard.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000000000000000000001C /* DestructionGuard.swift */; };
+		AA000000000000000000000B /* CloudImport.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000000000000000000001D /* CloudImport.swift */; };
+		AA000000000000000000000C /* CloudImportViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000000000000000000001E /* CloudImportViews.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -32,6 +34,8 @@
 		AA000000000000000000001A /* LocalizationWorkbench.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = LocalizationWorkbench.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		AA000000000000000000001B /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
 		AA000000000000000000001C /* DestructionGuard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DestructionGuard.swift; sourceTree = "<group>"; };
+		AA000000000000000000001D /* CloudImport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudImport.swift; sourceTree = "<group>"; };
+		AA000000000000000000001E /* CloudImportViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudImportViews.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -63,6 +67,8 @@
 				AA0000000000000000000016 /* WorkflowViews.swift */,
 				AA0000000000000000000011 /* AppSupport.swift */,
 				AA000000000000000000001C /* DestructionGuard.swift */,
+				AA000000000000000000001D /* CloudImport.swift */,
+				AA000000000000000000001E /* CloudImportViews.swift */,
 				AA0000000000000000000017 /* Info.plist */,
 				AA0000000000000000000033 /* Resources */,
 			);
@@ -165,6 +171,8 @@
 				AA0000000000000000000005 /* Workflow.swift in Sources */,
 				AA0000000000000000000006 /* WorkflowViews.swift in Sources */,
 				AA000000000000000000000A /* DestructionGuard.swift in Sources */,
+				AA000000000000000000000B /* CloudImport.swift in Sources */,
+				AA000000000000000000000C /* CloudImportViews.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
