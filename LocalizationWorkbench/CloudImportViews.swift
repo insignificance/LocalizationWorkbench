@@ -45,10 +45,10 @@ struct CloudImportSection: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("钉钉 MCP：\(connectionStore.statusTitle)")
                         .font(.system(size: 13, weight: .semibold, design: .rounded))
-                        .foregroundStyle(Color.black.opacity(0.8))
+                        .foregroundStyle(AppTheme.primaryText)
                     Text(connectionStore.statusDetail)
                         .font(.system(size: 11, weight: .medium, design: .serif))
-                        .foregroundStyle(Color.black.opacity(0.54))
+                        .foregroundStyle(AppTheme.secondaryText)
                         .lineLimit(2)
                 }
 
@@ -57,10 +57,10 @@ struct CloudImportSection: View {
                 VStack(alignment: .trailing, spacing: 4) {
                     Text("\(sourceStore.sources.count) 个已保存链接")
                         .font(.system(size: 12, weight: .bold, design: .rounded))
-                        .foregroundStyle(Color.black.opacity(0.7))
+                        .foregroundStyle(AppTheme.primaryText)
                     Text("支持勾选多个链接批量下载")
                         .font(.system(size: 10, weight: .medium, design: .serif))
-                        .foregroundStyle(Color.black.opacity(0.48))
+                        .foregroundStyle(AppTheme.tertiaryText)
                 }
 
                 Button("管理云端链接") {
@@ -175,7 +175,7 @@ struct CloudImportSheet: View {
                     .font(.system(size: 19, weight: .bold, design: .rounded))
                 Text("保存多个钉钉在线文档链接，按需勾选并批量导入。")
                     .font(.system(size: 12, weight: .medium, design: .serif))
-                    .foregroundStyle(Color.black.opacity(0.55))
+                    .foregroundStyle(AppTheme.secondaryText)
             }
 
             Spacer()
@@ -205,7 +205,7 @@ struct CloudImportSheet: View {
                         .font(.system(size: 13, weight: .semibold, design: .rounded))
                     Text(connectionStore.statusDetail)
                         .font(.system(size: 11, weight: .medium, design: .serif))
-                        .foregroundStyle(Color.black.opacity(0.55))
+                        .foregroundStyle(AppTheme.secondaryText)
                 }
 
                 Spacer()
@@ -228,7 +228,7 @@ struct CloudImportSheet: View {
             HStack {
                 Text("已选择 \(selectedSources.count) / \(sourceStore.sources.count)")
                     .font(.system(size: 11, weight: .semibold, design: .rounded))
-                    .foregroundStyle(Color.black.opacity(0.5))
+                    .foregroundStyle(AppTheme.secondaryText)
 
                 Spacer()
 
@@ -251,7 +251,7 @@ struct CloudImportSheet: View {
                         .font(.system(size: 13, weight: .semibold, design: .rounded))
                     Text("添加钉钉 AI 表格在线文档链接后，即可批量下载 Excel。")
                         .font(.system(size: 11, weight: .medium, design: .serif))
-                        .foregroundStyle(Color.black.opacity(0.5))
+                        .foregroundStyle(AppTheme.secondaryText)
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 24)
@@ -284,11 +284,11 @@ struct CloudImportSheet: View {
                     .controlSize(.small)
                 Text("正在处理钉钉导出任务…")
                     .font(.system(size: 12, weight: .medium, design: .serif))
-                    .foregroundStyle(Color.black.opacity(0.58))
+                    .foregroundStyle(AppTheme.secondaryText)
             } else {
                 Text("会保留已成功下载的文件；失败的链接可单独重试。")
                     .font(.system(size: 11, weight: .medium, design: .serif))
-                    .foregroundStyle(Color.black.opacity(0.48))
+                    .foregroundStyle(AppTheme.tertiaryText)
             }
 
             Spacer()
@@ -366,7 +366,7 @@ private struct CloudWorkbookSourceRow: View {
 
     private var statusColor: Color {
         guard let status else {
-            return Color.black.opacity(0.42)
+            return AppTheme.tertiaryText
         }
         switch status.phase {
         case .queued, .exporting:
@@ -414,10 +414,10 @@ private struct CloudWorkbookSourceRow: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(source.name)
                     .font(.system(size: 13, weight: .semibold, design: .rounded))
-                    .foregroundStyle(Color.black.opacity(0.82))
+                    .foregroundStyle(AppTheme.primaryText)
                 Text(source.summary)
                     .font(.system(size: 10, weight: .medium, design: .monospaced))
-                    .foregroundStyle(Color.black.opacity(0.5))
+                    .foregroundStyle(AppTheme.secondaryText)
                     .lineLimit(1)
                 if let status {
                     Label(status.detail, systemImage: statusSymbol)
@@ -448,7 +448,7 @@ private struct CloudWorkbookSourceRow: View {
             }
         }
         .padding(12)
-        .background(Color.black.opacity(0.035), in: RoundedRectangle(cornerRadius: 16))
+        .background(AppTheme.subtleFill, in: RoundedRectangle(cornerRadius: 16))
         .disabled(isDisabled)
     }
 }
@@ -471,7 +471,7 @@ struct DingTalkMCPConnectionSheet: View {
                         .font(.system(size: 19, weight: .bold, design: .rounded))
                     Text("导入或粘贴自己的 MCP 连接地址，应用仅保存到本机钥匙串。")
                         .font(.system(size: 12, weight: .medium, design: .serif))
-                        .foregroundStyle(Color.black.opacity(0.55))
+                        .foregroundStyle(AppTheme.secondaryText)
                 }
                 Spacer()
                 Button("关闭") {
@@ -489,7 +489,7 @@ struct DingTalkMCPConnectionSheet: View {
                             .font(.system(size: 13, weight: .semibold, design: .rounded))
                         Text(connectionStore.statusDetail)
                             .font(.system(size: 11, weight: .medium, design: .serif))
-                            .foregroundStyle(Color.black.opacity(0.52))
+                            .foregroundStyle(AppTheme.secondaryText)
                     }
                     Spacer()
                     if connectionStore.isConnected {
@@ -507,12 +507,12 @@ struct DingTalkMCPConnectionSheet: View {
                 VStack(alignment: .leading, spacing: 10) {
                     Text("若你已在 Claude、Qoder、Codex 等客户端连接官方钉钉 AI 表格 MCP，可从本机配置导入，无需再次复制访问 Key。")
                         .font(.system(size: 11, weight: .medium, design: .serif))
-                        .foregroundStyle(Color.black.opacity(0.55))
+                        .foregroundStyle(AppTheme.secondaryText)
 
                     if localCandidates.isEmpty {
                         Text("尚未发现本机已配置的钉钉 AI 表格 MCP。")
                             .font(.system(size: 11, weight: .medium, design: .serif))
-                            .foregroundStyle(Color.black.opacity(0.46))
+                            .foregroundStyle(AppTheme.tertiaryText)
                     } else {
                         ForEach(localCandidates) { candidate in
                             HStack {
@@ -542,7 +542,7 @@ struct DingTalkMCPConnectionSheet: View {
                         .textFieldStyle(.roundedBorder)
                     Text("连接地址通常包含个人访问 Key。保存前会调用 initialize 和 tools/list 验证 export_data 能力。")
                         .font(.system(size: 11, weight: .medium, design: .serif))
-                        .foregroundStyle(Color.black.opacity(0.55))
+                        .foregroundStyle(AppTheme.secondaryText)
 
                     if !validationMessage.isEmpty {
                         Text(validationMessage)
@@ -628,7 +628,7 @@ struct DingTalkSourceEditorSheet: View {
                         .font(.system(size: 19, weight: .bold, design: .rounded))
                     Text("链接只用于识别导出目标，钉钉账号凭据不会保存在此处。")
                         .font(.system(size: 12, weight: .medium, design: .serif))
-                        .foregroundStyle(Color.black.opacity(0.55))
+                        .foregroundStyle(AppTheme.secondaryText)
                 }
                 Spacer()
                 Button("取消") {
@@ -651,7 +651,7 @@ struct DingTalkSourceEditorSheet: View {
                     if !baseID.isEmpty {
                         Text("已识别 Base ID：\(baseID)")
                             .font(.system(size: 10, weight: .medium, design: .monospaced))
-                            .foregroundStyle(Color.black.opacity(0.52))
+                            .foregroundStyle(AppTheme.secondaryText)
                             .lineLimit(1)
                     }
                 }
@@ -664,7 +664,7 @@ struct DingTalkSourceEditorSheet: View {
 
                 Text(scope.detail)
                     .font(.system(size: 11, weight: .medium, design: .serif))
-                    .foregroundStyle(Color.black.opacity(0.52))
+                    .foregroundStyle(AppTheme.secondaryText)
 
                 if let reference = try? DingTalkDocumentReference.parse(link),
                    !usesInferredScope,

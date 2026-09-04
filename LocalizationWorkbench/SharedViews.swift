@@ -1,6 +1,25 @@
 import AppKit
 import SwiftUI
 
+/// 统一使用语义颜色，让文字、表面和分隔线随浅色、深色及辅助功能对比度自动适配。
+enum AppTheme {
+    static let primaryText = Color.primary
+    static let secondaryText = Color.secondary
+    static let tertiaryText = Color(nsColor: .tertiaryLabelColor)
+    static let inverseText = Color.white
+
+    static let canvasTop = Color(nsColor: .windowBackgroundColor)
+    static let canvasMiddle = Color(nsColor: .underPageBackgroundColor)
+    static let canvasBottom = Color(nsColor: .textBackgroundColor)
+    static let cardSurface = Color(nsColor: .textBackgroundColor)
+    static let fieldSurface = Color(nsColor: .controlBackgroundColor)
+    static let subtleFill = Color.primary.opacity(0.045)
+    static let strongSubtleFill = Color.primary.opacity(0.075)
+    static let outline = Color(nsColor: .separatorColor)
+    static let shadow = Color.black.opacity(0.16)
+    static let neutralAction = Color.accentColor
+}
+
 struct WorkflowMetric: Identifiable {
     let id = UUID()
     let title: String
@@ -22,9 +41,9 @@ struct AppBackdrop: View {
         ZStack {
             LinearGradient(
                 colors: [
-                    Color(red: 0.95, green: 0.95, blue: 0.92),
-                    Color(red: 0.98, green: 0.97, blue: 0.94),
-                    Color.white,
+                    AppTheme.canvasTop,
+                    AppTheme.canvasMiddle,
+                    AppTheme.canvasBottom,
                 ],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
@@ -37,13 +56,13 @@ struct AppBackdrop: View {
                 .offset(x: 340, y: -300)
 
             RoundedRectangle(cornerRadius: 120)
-                .fill(Color.black.opacity(0.03))
+                .fill(AppTheme.subtleFill)
                 .frame(width: 430, height: 220)
                 .rotationEffect(.degrees(-14))
                 .offset(x: -320, y: 260)
 
             Circle()
-                .fill(Color.white.opacity(0.7))
+                .fill(AppTheme.cardSurface.opacity(0.7))
                 .frame(width: 360, height: 360)
                 .blur(radius: 24)
                 .offset(x: -460, y: -240)
@@ -176,14 +195,14 @@ struct WorkflowSwitchBar: View {
             if let currentIndex {
                 Text("功能 \(currentIndex + 1) / \(tools.count)")
                     .font(.system(size: 11, weight: .bold, design: .rounded))
-                    .foregroundStyle(Color.black.opacity(0.45))
+                    .foregroundStyle(AppTheme.tertiaryText)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 6)
-                    .background(Color.white.opacity(0.72), in: Capsule())
+                    .background(AppTheme.cardSurface.opacity(0.88), in: Capsule())
             }
         }
         .padding(12)
-        .background(Color.white.opacity(0.8), in: RoundedRectangle(cornerRadius: 18))
+        .background(AppTheme.cardSurface.opacity(0.9), in: RoundedRectangle(cornerRadius: 18))
         .overlay(
             RoundedRectangle(cornerRadius: 18)
                 .stroke(workflow.tint.opacity(0.12), lineWidth: 1)
@@ -216,7 +235,7 @@ struct HeroHeader: View {
                     HStack(spacing: 10) {
                         Text(workflow.title)
                             .font(.system(size: 24, weight: .bold, design: .rounded))
-                            .foregroundStyle(Color.black.opacity(0.88))
+                            .foregroundStyle(AppTheme.primaryText)
 
                         CapsuleLabel(
                             text: workflow.accentName,
@@ -227,7 +246,7 @@ struct HeroHeader: View {
 
                     Text(workflow.subtitle)
                         .font(.system(size: 13, weight: .medium, design: .serif))
-                        .foregroundStyle(Color.black.opacity(0.66))
+                        .foregroundStyle(AppTheme.secondaryText)
                         .frame(maxWidth: 760, alignment: .leading)
 
                     HStack(spacing: 10) {
@@ -245,9 +264,9 @@ struct HeroHeader: View {
         .background(
             LinearGradient(
                 colors: [
-                    Color.white.opacity(0.92),
+                    AppTheme.cardSurface.opacity(0.94),
                     workflow.tint.opacity(0.08),
-                    Color.white.opacity(0.86),
+                    AppTheme.cardSurface.opacity(0.9),
                 ],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
@@ -258,7 +277,7 @@ struct HeroHeader: View {
             RoundedRectangle(cornerRadius: 28)
                 .stroke(workflow.tint.opacity(0.16), lineWidth: 1)
         )
-        .shadow(color: Color.black.opacity(0.04), radius: 16, x: 0, y: 12)
+        .shadow(color: AppTheme.shadow, radius: 16, x: 0, y: 12)
     }
 }
 
@@ -275,7 +294,7 @@ private struct CapsuleLabel: View {
     var body: some View {
         Text(text)
             .font(.system(size: 11, weight: .semibold, design: .rounded))
-            .foregroundStyle(style == .solid ? Color.white : Color.black.opacity(0.72))
+            .foregroundStyle(style == .solid ? AppTheme.inverseText : AppTheme.primaryText)
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
             .background(background)
@@ -289,7 +308,7 @@ private struct CapsuleLabel: View {
                 .fill(accent)
         case .outline:
             Capsule()
-                .fill(Color.white.opacity(0.72))
+                .fill(AppTheme.cardSurface.opacity(0.86))
                 .overlay(
                     Capsule()
                         .stroke(accent.opacity(0.18), lineWidth: 1)
@@ -308,21 +327,21 @@ struct MetricStrip: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(metric.title.uppercased())
                         .font(.system(size: 10, weight: .bold, design: .rounded))
-                        .foregroundStyle(Color.black.opacity(0.42))
+                        .foregroundStyle(AppTheme.tertiaryText)
 
                     Text(metric.value)
                         .font(.system(size: 21, weight: .bold, design: .rounded))
-                        .foregroundStyle(Color.black.opacity(0.82))
+                        .foregroundStyle(AppTheme.primaryText)
 
                     Text(metric.caption)
                         .font(.system(size: 11, weight: .medium, design: .serif))
-                        .foregroundStyle(Color.black.opacity(0.56))
+                        .foregroundStyle(AppTheme.secondaryText)
                 }
                 .padding(16)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(
                     LinearGradient(
-                        colors: [Color.white.opacity(0.94), accent.opacity(0.08)],
+                        colors: [AppTheme.cardSurface.opacity(0.96), accent.opacity(0.1)],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     ),
@@ -360,12 +379,12 @@ struct SectionCard<Content: View>: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)
                     .font(.system(size: 16, weight: .semibold, design: .rounded))
-                    .foregroundStyle(Color.black.opacity(0.86))
+                    .foregroundStyle(AppTheme.primaryText)
 
                 if let subtitle, !subtitle.isEmpty {
                     Text(subtitle)
                         .font(.system(size: 11, weight: .medium, design: .serif))
-                        .foregroundStyle(Color.black.opacity(0.56))
+                        .foregroundStyle(AppTheme.secondaryText)
                 }
             }
 
@@ -373,12 +392,12 @@ struct SectionCard<Content: View>: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.white.opacity(0.88), in: RoundedRectangle(cornerRadius: 24))
+        .background(AppTheme.cardSurface.opacity(0.94), in: RoundedRectangle(cornerRadius: 24))
         .overlay(
             RoundedRectangle(cornerRadius: 24)
                 .stroke(accent.opacity(0.14), lineWidth: 1)
         )
-        .shadow(color: Color.black.opacity(0.04), radius: 14, x: 0, y: 10)
+        .shadow(color: AppTheme.shadow, radius: 14, x: 0, y: 10)
     }
 }
 
@@ -416,16 +435,16 @@ struct ReadinessCard: View {
                         VStack(alignment: .leading, spacing: 3) {
                             Text(item.title)
                                 .font(.system(size: 12, weight: .semibold, design: .rounded))
-                                .foregroundStyle(Color.black.opacity(0.8))
+                                .foregroundStyle(AppTheme.primaryText)
                             Text(item.detail)
                                 .font(.system(size: 11, weight: .medium, design: .serif))
-                                .foregroundStyle(Color.black.opacity(0.55))
+                                .foregroundStyle(AppTheme.secondaryText)
                         }
 
                         Spacer()
                     }
                     .padding(10)
-                    .background(Color.black.opacity(0.035), in: RoundedRectangle(cornerRadius: 16))
+                    .background(AppTheme.subtleFill, in: RoundedRectangle(cornerRadius: 16))
                 }
             }
         }
@@ -444,13 +463,13 @@ struct TipsCard: View {
                     HStack(alignment: .top, spacing: 10) {
                         Text(String(index + 1))
                             .font(.system(size: 11, weight: .bold, design: .rounded))
-                            .foregroundStyle(Color.white)
+                            .foregroundStyle(AppTheme.inverseText)
                             .frame(width: 22, height: 22)
                             .background(accent, in: Circle())
 
                         Text(tip)
                             .font(.system(size: 12, weight: .medium, design: .serif))
-                            .foregroundStyle(Color.black.opacity(0.68))
+                            .foregroundStyle(AppTheme.secondaryText)
 
                         Spacer()
                     }
@@ -481,17 +500,17 @@ struct OverviewTile: View {
 
                     Image(systemName: "arrow.up.right")
                         .font(.system(size: 12, weight: .bold, design: .rounded))
-                        .foregroundStyle(Color.black.opacity(0.35))
+                        .foregroundStyle(AppTheme.tertiaryText)
                 }
 
                 VStack(alignment: .leading, spacing: 6) {
                     Text(workflow.title)
                         .font(.system(size: 17, weight: .bold, design: .rounded))
-                        .foregroundStyle(Color.black.opacity(0.84))
+                        .foregroundStyle(AppTheme.primaryText)
 
                     Text(workflow.subtitle)
                         .font(.system(size: 12, weight: .medium, design: .serif))
-                        .foregroundStyle(Color.black.opacity(0.58))
+                        .foregroundStyle(AppTheme.secondaryText)
                         .lineLimit(3)
                 }
 
@@ -501,7 +520,7 @@ struct OverviewTile: View {
             .frame(maxWidth: .infinity, minHeight: 192, alignment: .leading)
             .background(
                 LinearGradient(
-                    colors: [Color.white.opacity(0.92), workflow.tint.opacity(0.06)],
+                    colors: [AppTheme.cardSurface.opacity(0.94), workflow.tint.opacity(0.08)],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
                 ),
@@ -511,7 +530,7 @@ struct OverviewTile: View {
                 RoundedRectangle(cornerRadius: 24)
                     .stroke(workflow.tint.opacity(0.15), lineWidth: 1)
             )
-            .shadow(color: Color.black.opacity(0.04), radius: 12, x: 0, y: 10)
+            .shadow(color: AppTheme.shadow, radius: 12, x: 0, y: 10)
         }
         .buttonStyle(.plain)
     }
@@ -539,23 +558,23 @@ struct ParameterFieldCard<Content: View>: View {
         VStack(alignment: .leading, spacing: 10) {
             Text(title)
                 .font(.system(size: 12, weight: .semibold, design: .rounded))
-                .foregroundStyle(Color.black.opacity(0.78))
+                .foregroundStyle(AppTheme.primaryText)
 
             Text(description)
                 .font(.system(size: 11, weight: .medium, design: .serif))
-                .foregroundStyle(Color.black.opacity(0.58))
+                .foregroundStyle(AppTheme.secondaryText)
 
             if let example, !example.isEmpty {
                 Text(example)
                     .font(.system(size: 10, weight: .medium, design: .monospaced))
-                    .foregroundStyle(Color.black.opacity(0.44))
+                    .foregroundStyle(AppTheme.tertiaryText)
             }
 
             content
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.black.opacity(0.035), in: RoundedRectangle(cornerRadius: 18))
+        .background(AppTheme.subtleFill, in: RoundedRectangle(cornerRadius: 18))
     }
 }
 
@@ -573,17 +592,17 @@ struct ParameterToggleCard: View {
 
             Text(description)
                 .font(.system(size: 11, weight: .medium, design: .serif))
-                .foregroundStyle(Color.black.opacity(0.58))
+                .foregroundStyle(AppTheme.secondaryText)
 
             if let note, !note.isEmpty {
                 Text(note)
                     .font(.system(size: 10, weight: .semibold, design: .rounded))
-                    .foregroundStyle(Color.black.opacity(0.44))
+                    .foregroundStyle(AppTheme.tertiaryText)
             }
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.black.opacity(0.035), in: RoundedRectangle(cornerRadius: 18))
+        .background(AppTheme.subtleFill, in: RoundedRectangle(cornerRadius: 18))
         .disabled(isDisabled)
     }
 }
@@ -604,14 +623,14 @@ struct PathField: View {
             HStack {
                 Text(title)
                     .font(.system(size: 12, weight: .semibold, design: .rounded))
-                    .foregroundStyle(Color.black.opacity(0.7))
+                    .foregroundStyle(AppTheme.primaryText)
 
                 Spacer()
 
                 if !text.trimmed.isEmpty {
                     Text(UserPath.lastComponent(text))
                         .font(.system(size: 11, weight: .semibold, design: .rounded))
-                        .foregroundStyle(Color.black.opacity(0.4))
+                        .foregroundStyle(AppTheme.tertiaryText)
                         .lineLimit(1)
                 }
             }
@@ -620,21 +639,21 @@ struct PathField: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     Text(displayText)
                         .font(.system(.body, design: .monospaced))
-                        .foregroundStyle(text.trimmed.isEmpty ? Color.black.opacity(0.34) : Color.black.opacity(0.8))
+                        .foregroundStyle(text.trimmed.isEmpty ? AppTheme.tertiaryText : AppTheme.primaryText)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 9)
                 }
                 .frame(maxWidth: .infinity, minHeight: 38)
-                .background(Color.white.opacity(0.88), in: RoundedRectangle(cornerRadius: 10))
+                .background(AppTheme.fieldSurface, in: RoundedRectangle(cornerRadius: 10))
                 .overlay(
                     RoundedRectangle(cornerRadius: 10)
-                        .stroke(Color.black.opacity(0.08), lineWidth: 1)
+                        .stroke(AppTheme.outline, lineWidth: 1)
                 )
 
                 Button(browseLabel, action: browseAction)
                     .buttonStyle(.borderedProminent)
-                    .tint(.black.opacity(0.78))
+                    .tint(AppTheme.neutralAction)
 
                 Button("粘贴") {
                     if let pasted = NSPasteboard.general.string(forType: .string)?.trimmed,
@@ -676,20 +695,20 @@ struct PathListEditor: View {
                     HStack(spacing: 8) {
                         Text(title)
                             .font(.system(size: 12, weight: .semibold, design: .rounded))
-                            .foregroundStyle(Color.black.opacity(0.7))
+                            .foregroundStyle(AppTheme.primaryText)
 
                         Text("\(items.count)")
                             .font(.system(size: 10, weight: .bold, design: .rounded))
-                            .foregroundStyle(Color.black.opacity(0.6))
+                            .foregroundStyle(AppTheme.secondaryText)
                             .padding(.horizontal, 8)
                             .padding(.vertical, 4)
-                            .background(Color.black.opacity(0.06), in: Capsule())
+                            .background(AppTheme.strongSubtleFill, in: Capsule())
                     }
 
                     if let subtitle, !subtitle.isEmpty {
                         Text(subtitle)
                             .font(.system(size: 11, weight: .medium, design: .serif))
-                            .foregroundStyle(Color.black.opacity(0.52))
+                            .foregroundStyle(AppTheme.secondaryText)
                     }
                 }
 
@@ -697,13 +716,13 @@ struct PathListEditor: View {
 
                 Button(addLabel, action: addAction)
                     .buttonStyle(.borderedProminent)
-                    .tint(.black.opacity(0.78))
+                    .tint(AppTheme.neutralAction)
             }
 
             if items.isEmpty {
                 Text(emptyText)
                     .font(.system(size: 13, weight: .medium, design: .serif))
-                    .foregroundStyle(Color.black.opacity(0.48))
+                    .foregroundStyle(AppTheme.secondaryText)
                     .padding(.vertical, 8)
             } else {
                 VStack(spacing: 10) {
@@ -712,11 +731,11 @@ struct PathListEditor: View {
                             VStack(alignment: .leading, spacing: 5) {
                                 Text(URL(fileURLWithPath: item).lastPathComponent)
                                     .font(.system(size: 13, weight: .semibold, design: .rounded))
-                                    .foregroundStyle(Color.black.opacity(0.82))
+                                    .foregroundStyle(AppTheme.primaryText)
 
                                 Text(item)
                                     .font(.system(size: 11, weight: .regular, design: .monospaced))
-                                    .foregroundStyle(Color.black.opacity(0.56))
+                                    .foregroundStyle(AppTheme.secondaryText)
                             }
 
                             Spacer()
@@ -734,7 +753,7 @@ struct PathListEditor: View {
                             .buttonStyle(.bordered)
                         }
                         .padding(12)
-                        .background(Color.black.opacity(0.035), in: RoundedRectangle(cornerRadius: 16))
+                        .background(AppTheme.subtleFill, in: RoundedRectangle(cornerRadius: 16))
                     }
                 }
             }
@@ -799,7 +818,7 @@ struct ConsoleCard: View {
 
                     Text(progress.detail)
                         .font(.system(size: 11, weight: .medium, design: .serif))
-                        .foregroundStyle(Color.black.opacity(0.56))
+                        .foregroundStyle(AppTheme.secondaryText)
                         .lineLimit(2)
                 }
                 .padding(12)
@@ -809,16 +828,16 @@ struct ConsoleCard: View {
             if !runner.commandLine.isEmpty {
                 Text(runner.commandLine)
                     .font(.system(size: 11, weight: .regular, design: .monospaced))
-                    .foregroundStyle(Color.black.opacity(0.58))
+                    .foregroundStyle(AppTheme.secondaryText)
                     .padding(10)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color.black.opacity(0.035), in: RoundedRectangle(cornerRadius: 14))
+                    .background(AppTheme.subtleFill, in: RoundedRectangle(cornerRadius: 14))
             }
 
             ScrollView {
                 Text(runner.output.isEmpty ? "尚未执行任何脚本。" : runner.output)
                     .font(.system(size: 12, weight: .regular, design: .monospaced))
-                    .foregroundStyle(Color.white.opacity(0.9))
+                    .foregroundStyle(AppTheme.inverseText.opacity(0.92))
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(14)
             }
@@ -887,7 +906,7 @@ struct FloatingExecutionDock: View {
             RoundedRectangle(cornerRadius: 24)
                 .stroke(accent.opacity(0.18), lineWidth: 1)
         )
-        .shadow(color: Color.black.opacity(0.12), radius: 18, x: 0, y: 10)
+        .shadow(color: AppTheme.shadow, radius: 18, x: 0, y: 10)
         .padding(.horizontal, 18)
         .padding(.bottom, 10)
     }
@@ -975,7 +994,7 @@ struct ExecutionStatusBadge: View {
     private var color: Color {
         switch phase {
         case .idle:
-            return Color.black.opacity(0.6)
+            return AppTheme.secondaryText
         case .running:
             return accent
         case .cancelled:
@@ -1008,11 +1027,11 @@ struct ExecutionStatusBadge: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
                     .font(.system(size: large ? 14 : 13, weight: .semibold, design: .rounded))
-                    .foregroundStyle(Color.black.opacity(0.84))
+                    .foregroundStyle(AppTheme.primaryText)
 
                 Text(subtitle)
                     .font(.system(size: large ? 11 : 10, weight: .medium, design: .serif))
-                    .foregroundStyle(Color.black.opacity(0.52))
+                    .foregroundStyle(AppTheme.secondaryText)
             }
         }
         .animation(.spring(response: 0.34, dampingFraction: 0.7), value: pulse)
@@ -1084,7 +1103,7 @@ struct ProjectRootSetupSheet: View {
                     dismiss()
                 }
                 .buttonStyle(.borderedProminent)
-                .tint(Color.black.opacity(0.82))
+                .tint(AppTheme.neutralAction)
                 .disabled(!projectRootStore.hasValidPath)
             }
             .padding(20)
@@ -1109,7 +1128,7 @@ struct ProjectRootSetupSheet: View {
 
                     Text(projectRootStore.detailText)
                         .font(.system(size: 12, weight: .medium, design: .serif))
-                        .foregroundStyle(Color.black.opacity(0.62))
+                        .foregroundStyle(AppTheme.secondaryText)
                         .lineLimit(2)
                 }
 
@@ -1119,7 +1138,7 @@ struct ProjectRootSetupSheet: View {
 
                     Text("这个设置主要影响“.localized 迁移”和“i18n key 迁移”。如果切换到另一个业务工程，只需要在这里改一次。")
                         .font(.system(size: 13, weight: .medium, design: .serif))
-                        .foregroundStyle(Color.black.opacity(0.62))
+                        .foregroundStyle(AppTheme.secondaryText)
                 }
 
                 Spacer(minLength: 0)
@@ -1127,7 +1146,7 @@ struct ProjectRootSetupSheet: View {
             .padding(24)
             .background(
                 LinearGradient(
-                    colors: [Color.white, Color(red: 0.98, green: 0.97, blue: 0.94)],
+                    colors: [AppTheme.canvasBottom, AppTheme.canvasMiddle],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
                 )
@@ -1161,7 +1180,7 @@ struct ReadmeSheet: View {
                     dismiss()
                 }
                 .buttonStyle(.borderedProminent)
-                .tint(Color.black.opacity(0.82))
+                .tint(AppTheme.neutralAction)
             }
             .padding(20)
             .background(.ultraThinMaterial)
@@ -1169,13 +1188,13 @@ struct ReadmeSheet: View {
             ScrollView {
                 Text(markdownText)
                 .font(.system(size: 14, weight: .regular, design: .monospaced))
-                .foregroundStyle(Color.black.opacity(0.84))
+                .foregroundStyle(AppTheme.primaryText)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(24)
             }
             .background(
                 LinearGradient(
-                    colors: [Color.white, Color(red: 0.98, green: 0.97, blue: 0.94)],
+                    colors: [AppTheme.canvasBottom, AppTheme.canvasMiddle],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
                 )

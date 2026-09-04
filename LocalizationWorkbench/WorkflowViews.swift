@@ -311,7 +311,7 @@ struct ExcelConversionView: View {
 
                 Text("补充：当语言列表头是 `名称（英文）`、`排障建议（英文）` 这种格式时，脚本会按 Key 表头自动挑选对应那一组语言列。`AppDevKey` 默认取“名称”组，`AppDevKey（排障建议）` 会取“排障建议”组，然后两套 key 会合并进同一份 `.strings` / `.xcstrings`。")
                     .font(.system(size: 11, weight: .medium, design: .serif))
-                    .foregroundStyle(Color.black.opacity(0.56))
+                    .foregroundStyle(AppTheme.secondaryText)
             }
 
             SectionCard(
@@ -377,7 +377,7 @@ struct ExcelConversionView: View {
 
                 Text("补充：当你保持默认“第一个 sheet”、没有填写 Sheet 名称，且没有手动开启整本扫描时，脚本会尝试自动识别当前 Excel 是单 sheet 还是多 sheet App 模式。")
                     .font(.system(size: 11, weight: .medium, design: .serif))
-                    .foregroundStyle(Color.black.opacity(0.56))
+                    .foregroundStyle(AppTheme.secondaryText)
             }
         }
         .safeAreaInset(edge: .bottom) {
@@ -825,7 +825,7 @@ struct LanguageAliasGuideView: View {
 
                 Text("locales 的 key 是输出 Locale，数组内填写 Excel 可识别的别名。ignored_headers 可排除业务线、备注等元数据表头。")
                     .font(.system(size: 12, weight: .medium, design: .serif))
-                    .foregroundStyle(Color.black.opacity(0.62))
+                    .foregroundStyle(AppTheme.secondaryText)
 
                 Text("同一个别名不能映射到两个不同 Locale；发生冲突时脚本会停止并提示。")
                     .font(.system(size: 11, weight: .semibold, design: .rounded))
@@ -847,7 +847,7 @@ struct LanguageAliasGuideView: View {
                     Text("• 换行检查以同一分组的英文 / en 列为基线。")
                 }
                 .font(.system(size: 12, weight: .medium, design: .serif))
-                .foregroundStyle(Color.black.opacity(0.64))
+                .foregroundStyle(AppTheme.secondaryText)
             }
 
             SectionCard(
@@ -884,23 +884,23 @@ private struct LanguageAliasRuleRow: View {
         HStack(alignment: .top, spacing: 12) {
             Text(number)
                 .font(.system(size: 11, weight: .bold, design: .rounded))
-                .foregroundStyle(Color.white)
+                .foregroundStyle(AppTheme.inverseText)
                 .frame(width: 24, height: 24)
                 .background(accent, in: Circle())
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(title)
                     .font(.system(size: 12, weight: .semibold, design: .rounded))
-                    .foregroundStyle(Color.black.opacity(0.8))
+                    .foregroundStyle(AppTheme.primaryText)
                 Text(detail)
                     .font(.system(size: 11, weight: .medium, design: .serif))
-                    .foregroundStyle(Color.black.opacity(0.58))
+                    .foregroundStyle(AppTheme.secondaryText)
             }
 
             Spacer(minLength: 0)
         }
         .padding(11)
-        .background(Color.black.opacity(0.035), in: RoundedRectangle(cornerRadius: 16))
+        .background(AppTheme.subtleFill, in: RoundedRectangle(cornerRadius: 16))
     }
 }
 
@@ -912,14 +912,14 @@ private struct LanguageAliasExampleCard: View {
         VStack(alignment: .leading, spacing: 6) {
             Text(header)
                 .font(.system(size: 11, weight: .medium, design: .monospaced))
-                .foregroundStyle(Color.black.opacity(0.64))
+                .foregroundStyle(AppTheme.secondaryText)
             Text(locale)
                 .font(.system(size: 14, weight: .bold, design: .rounded))
-                .foregroundStyle(Color.black.opacity(0.82))
+                .foregroundStyle(AppTheme.primaryText)
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.black.opacity(0.035), in: RoundedRectangle(cornerRadius: 16))
+        .background(AppTheme.subtleFill, in: RoundedRectangle(cornerRadius: 16))
     }
 }
 
@@ -929,11 +929,11 @@ private struct LanguageAliasCodeBlock: View {
     var body: some View {
         Text(code)
             .font(.system(size: 11, weight: .regular, design: .monospaced))
-            .foregroundStyle(Color.black.opacity(0.72))
+            .foregroundStyle(AppTheme.primaryText)
             .textSelection(.enabled)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(12)
-            .background(Color.black.opacity(0.055), in: RoundedRectangle(cornerRadius: 16))
+            .background(AppTheme.strongSubtleFill, in: RoundedRectangle(cornerRadius: 16))
     }
 }
 
@@ -945,10 +945,10 @@ private struct LanguageAliasQuestionRow: View {
         VStack(alignment: .leading, spacing: 4) {
             Text(question)
                 .font(.system(size: 12, weight: .semibold, design: .rounded))
-                .foregroundStyle(Color.black.opacity(0.8))
+                .foregroundStyle(AppTheme.primaryText)
             Text(answer)
                 .font(.system(size: 11, weight: .medium, design: .serif))
-                .foregroundStyle(Color.black.opacity(0.58))
+                .foregroundStyle(AppTheme.secondaryText)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -1018,7 +1018,7 @@ struct CleanStringsView: View {
 
                 Text("关闭时只做 dry-run，控制台会输出扫描结果，不改动磁盘内容。")
                     .font(.system(size: 12, weight: .medium, design: .serif))
-                    .foregroundStyle(Color.black.opacity(0.56))
+                    .foregroundStyle(AppTheme.secondaryText)
             }
         }
         .safeAreaInset(edge: .bottom) {

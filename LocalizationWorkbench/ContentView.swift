@@ -1,10 +1,16 @@
 import SwiftUI
 
 struct ContentView: View {
+    @Binding var appAppearanceRawValue: String
+
     @State private var selection: Workflow? = .excelConversion
     @StateObject private var projectRootStore = ProjectRootStore()
     @State private var isShowingProjectRootSheet = false
     @State private var didEvaluateLaunchPrompt = false
+
+    private var appAppearance: AppAppearance {
+        AppAppearance(rawValue: appAppearanceRawValue) ?? .light
+    }
 
     var body: some View {
         NavigationSplitView {
@@ -15,6 +21,27 @@ struct ContentView: View {
         .navigationSplitViewStyle(.balanced)
         .autocorrectionDisabled()
         .disableWritingToolsIfAvailable()
+        .toolbar {
+            ToolbarItem(placement: .automatic) {
+                Menu {
+                    ForEach(AppAppearance.allCases) { appearance in
+                        Button {
+                            appAppearanceRawValue = appearance.rawValue
+                        } label: {
+                            Label(
+                                appearance.title,
+                                systemImage: appearance == appAppearance
+                                    ? "checkmark.circle.fill"
+                                    : appearance.symbolName
+                            )
+                        }
+                    }
+                } label: {
+                    Label("切换主题", systemImage: appAppearance.symbolName)
+                }
+                .help("切换应用主题")
+            }
+        }
         .sheet(isPresented: $isShowingProjectRootSheet) {
             ProjectRootSetupSheet(projectRootStore: projectRootStore, allowsSkipping: true)
         }
@@ -38,6 +65,7 @@ struct ContentView: View {
             }
         }
         .listStyle(.sidebar)
+        .navigationSplitViewColumnWidth(min: 260, ideal: 300, max: 340)
         .safeAreaInset(edge: .top) {
             SidebarHeader(
                 projectRootTitle: projectRootStore.titleText,
@@ -74,10 +102,10 @@ struct ContentView: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text(workflow.title)
                     .font(.system(size: 14, weight: .semibold, design: .rounded))
-                    .foregroundStyle(Color.black.opacity(isSelected ? 0.92 : 0.82))
+                    .foregroundStyle(AppTheme.primaryText)
                 Text(workflow.outputSummary)
                     .font(.system(size: 11, weight: .medium, design: .serif))
-                    .foregroundStyle(Color.black.opacity(isSelected ? 0.7 : 0.48))
+                    .foregroundStyle(AppTheme.secondaryText)
                     .lineLimit(2)
             }
 
@@ -88,11 +116,11 @@ struct ContentView: View {
         .contentShape(RoundedRectangle(cornerRadius: 16))
         .background(
             RoundedRectangle(cornerRadius: 16)
-                .fill(isSelected ? workflow.tint.opacity(0.16) : Color.white.opacity(0.001))
+                .fill(isSelected ? workflow.tint.opacity(0.16) : Color.clear)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 16)
-                .stroke(isSelected ? workflow.tint.opacity(0.35) : Color.black.opacity(0.05), lineWidth: 1)
+                .stroke(isSelected ? workflow.tint.opacity(0.35) : AppTheme.outline.opacity(0.6), lineWidth: 1)
         )
     }
 
@@ -172,20 +200,20 @@ private struct SidebarHeader: View {
                 Text("macOS")
             }
             .font(.system(size: 10, weight: .bold, design: .rounded))
-            .foregroundStyle(Color.black.opacity(0.48))
+            .foregroundStyle(AppTheme.tertiaryText)
 
             HStack(alignment: .center, spacing: 10) {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("项目根目录")
                         .font(.system(size: 10, weight: .bold, design: .rounded))
-                        .foregroundStyle(Color.black.opacity(0.46))
+                        .foregroundStyle(AppTheme.tertiaryText)
                     Text(projectRootTitle)
                         .font(.system(size: 13, weight: .semibold, design: .rounded))
-                        .foregroundStyle(isProjectRootReady ? Color.black.opacity(0.82) : Color.orange.opacity(0.92))
+                        .foregroundStyle(isProjectRootReady ? AppTheme.primaryText : Color.orange)
                         .lineLimit(1)
                     Text(projectRootDetail)
                         .font(.system(size: 10, weight: .medium, design: .serif))
-                        .foregroundStyle(Color.black.opacity(0.48))
+                        .foregroundStyle(AppTheme.tertiaryText)
                         .lineLimit(2)
                 }
 
@@ -195,13 +223,13 @@ private struct SidebarHeader: View {
                     action()
                 }
                 .buttonStyle(.borderedProminent)
-                .tint(Color.black.opacity(0.8))
+                .tint(AppTheme.neutralAction)
             }
             .padding(12)
-            .background(Color.white.opacity(0.72), in: RoundedRectangle(cornerRadius: 16))
+            .background(AppTheme.cardSurface.opacity(0.88), in: RoundedRectangle(cornerRadius: 16))
             .overlay(
                 RoundedRectangle(cornerRadius: 16)
-                    .stroke(isProjectRootReady ? Color.black.opacity(0.08) : Color.orange.opacity(0.28), lineWidth: 1)
+                    .stroke(isProjectRootReady ? AppTheme.outline : Color.orange.opacity(0.5), lineWidth: 1)
             )
         }
         .frame(maxWidth: .infinity, alignment: .leading)
